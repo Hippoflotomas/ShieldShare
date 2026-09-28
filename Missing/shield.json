@@ -1,0 +1,11 @@
+{
+  "displayName": "Test",
+  "description": "This is the test shield",
+  "basePrefab": "ShieldWood",
+  "StyleCount": 3,
+  "craftingStation": "piece_workbench",
+  "Hidden": false,
+  "requirements": [
+    { "item": "Wood", "amount": 2 }
+  ]
+}

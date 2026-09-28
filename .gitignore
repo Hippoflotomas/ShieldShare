@@ -1,0 +1,39 @@
+# --- Build output ---
+[Bb]in/
+[Oo]bj/
+*.pdb
+*.mdb
+ShieldShare/Package/plugins/
+*.zip
+
+# --- Visual Studio / Rider / VS Code ---
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userprefs
+
+# --- Per-machine build settings (game install path etc.) ---
+Environment.props
+
+# --- Unity stub project ---
+# The Assemblies folder is filled by the CopyToUnity build step with Valheim's,
+# BepInEx's and Jotunn's DLLs. Valheim's are the game's copyrighted code and
+# must not be pushed to GitHub; all of them are regenerated on every build.
+JotunnModStubUnity/Assets/Assemblies/*.dll
+JotunnModStubUnity/Assets/Assemblies/*.pdb
+JotunnModStubUnity/Assets/Assemblies/*.mdb
+JotunnModStubUnity/[Ll]ibrary/
+JotunnModStubUnity/[Tt]emp/
+JotunnModStubUnity/[Ll]ogs/
+JotunnModStubUnity/[Uu]ser[Ss]ettings/
+JotunnModStubUnity/[Bb]uild/
+JotunnModStubUnity/*.csproj
+JotunnModStubUnity/*.sln
+
+# --- Test assets you don't have redistribution rights for ---
+Missing/*.jpg
+
+# --- Scratch ---
+_to_delete/
