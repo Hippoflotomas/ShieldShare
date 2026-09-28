@@ -480,13 +480,16 @@ namespace ShieldShare
             public int FaceSign;
             /// <summary>Turn patterns upside down (model built the other way up).</summary>
             public bool FlipVertical;
+            /// <summary>Mirror patterns left-right (model built mirrored).</summary>
+            public bool FlipHorizontal;
             /// <summary>Only paint where the vanilla styles paint (keeps patterns off metal parts).</summary>
             public bool MaskToVanillaPaint;
 
-            public BaseSettings(int faceSign, bool flipVertical, bool mask)
+            public BaseSettings(int faceSign, bool flipVertical, bool flipHorizontal, bool mask)
             {
                 FaceSign = faceSign;
                 FlipVertical = flipVertical;
+                FlipHorizontal = flipHorizontal;
                 MaskToVanillaPaint = mask;
             }
         }
@@ -499,16 +502,17 @@ namespace ShieldShare
         private static readonly Dictionary<string, BaseSettings> KnownBases =
             new Dictionary<string, BaseSettings>(StringComparer.OrdinalIgnoreCase)
             {
-                //                                          face  flipV  mask
-                { "ShieldWood",            new BaseSettings(-1, false, false) }, // verified in game
-                { "ShieldBanded",          new BaseSettings(-1, false, false) }, // verified in game
-                { "ShieldWoodTower",       new BaseSettings(+1, false, false) }, // verified in game
-                { "ShieldSilver",          new BaseSettings(+1, true,  false) }, // verified in game
-                { "ShieldBlackmetal",      new BaseSettings(+1, true,  true)  }, // side + mask verified; flip from test 4
-                { "ShieldBlackmetalTower", new BaseSettings(+1, true,  true)  }, // side + mask verified; flip from test 4
-                { "ShieldIronTower",       new BaseSettings(+1, true,  true)  }, // side + mask verified; flip from test 4
-                { "ShieldFlametal",        new BaseSettings(+1, false, true)  }, // verified in game
-                { "ShieldFlametalTower",   new BaseSettings(-1, false, true)  }, // verified in game
+                // Check with an asymmetric pattern (the elephant faces left in Pattern2).
+                //                                          face  flipV  flipH  mask
+                { "ShieldWood",            new BaseSettings(-1, false, false, false) }, // verified in game
+                { "ShieldBanded",          new BaseSettings(-1, false, true,  false) }, // flipH from test 5 (was mirrored)
+                { "ShieldWoodTower",       new BaseSettings(+1, false, true,  false) }, // flipH from test 5 (was mirrored)
+                { "ShieldSilver",          new BaseSettings(+1, true,  false, false) }, // verified in game
+                { "ShieldBlackmetal",      new BaseSettings(+1, true,  false, true)  }, // verified in game
+                { "ShieldBlackmetalTower", new BaseSettings(+1, true,  false, true)  }, // verified in game
+                { "ShieldIronTower",       new BaseSettings(+1, true,  false, true)  }, // verified in game
+                { "ShieldFlametal",        new BaseSettings(+1, false, true,  true)  }, // flipH from test 5 (was mirrored)
+                { "ShieldFlametalTower",   new BaseSettings(-1, false, true,  true)  }, // flipH from test 5 (was mirrored)
             };
 
         /// <summary>Vanilla style atlas of each base, for the paint-area mask.</summary>
@@ -550,13 +554,14 @@ namespace ShieldShare
             int detected = DetectFaceSign(snap, triangles, renderer, out detectNote, out vanilla);
             BaseSettings known;
             int faceSign;
-            bool flipV = false, mask = true;
+            bool flipV = false, flipH = false, mask = true;
             if (KnownBases.TryGetValue(baseName, out known))
             {
                 faceSign = known.FaceSign;
                 flipV = known.FlipVertical;
+                flipH = known.FlipHorizontal;
                 mask = known.MaskToVanillaPaint;
-                detectNote = $"tested: {(faceSign < 0 ? "-Z" : "+Z")}{(flipV ? ", flipped" : "")}; paint check: {detectNote}";
+                detectNote = $"tested: {(faceSign < 0 ? "-Z" : "+Z")}{(flipV ? ", flipped vertically" : "")}{(flipH ? ", mirrored" : "")}; paint check: {detectNote}";
             }
             else
             {
@@ -568,7 +573,7 @@ namespace ShieldShare
             if (mask && vanilla != null)
                 detectNote += "; masked to vanilla paint area";
 
-            projection = FrontProjection.Build(snap.Vertices, snap.Normals, snap.Uvs, triangles, faceSign, flipV);
+            projection = FrontProjection.Build(snap.Vertices, snap.Normals, snap.Uvs, triangles, faceSign, flipV, flipH);
             projections[baseName] = projection;
 
             Jotunn.Logger.LogInfo($"[ShieldShare] Base '{baseName}': face = {(faceSign < 0 ? "-Z" : "+Z")} ({detectNote}); " +

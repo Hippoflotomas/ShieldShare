@@ -37,6 +37,7 @@ namespace ShieldShare
         /// <summary>-1 = the face points down local -Z (wood, banded), +1 = local +Z (silver, wood tower).</summary>
         public int FaceSign;
         public bool FlipVertical;
+        public bool FlipHorizontal;
         public int FrontTrianglesOutsideUnitUv;
         public int TotalTriangles;
 
@@ -44,8 +45,9 @@ namespace ShieldShare
 
         /// <param name="faceSign">-1 if the outside of the shield faces local -Z, +1 if it faces +Z.</param>
         /// <param name="flipVertical">Turn the pattern upside down (for models built the other way up).</param>
+        /// <param name="flipHorizontal">Mirror the pattern left-right (for models whose axes are mirrored).</param>
         public static FrontProjection Build(Vector3[] vertices, Vector3[] normals, Vector2[] uvs, int[] triangles,
-            int faceSign = -1, bool flipVertical = false)
+            int faceSign = -1, bool flipVertical = false, bool flipHorizontal = false)
         {
             if (vertices == null || uvs == null || triangles == null)
                 throw new ArgumentNullException("Mesh data missing (vertices/uvs/triangles).");
@@ -54,7 +56,7 @@ namespace ShieldShare
 
             bool haveNormals = normals != null && normals.Length == vertices.Length;
             faceSign = faceSign >= 0 ? 1 : -1;
-            var proj = new FrontProjection { TotalTriangles = triangles.Length / 3, FaceSign = faceSign, FlipVertical = flipVertical };
+            var proj = new FrontProjection { TotalTriangles = triangles.Length / 3, FaceSign = faceSign, FlipVertical = flipVertical, FlipHorizontal = flipHorizontal };
             var frontTris = new List<int>();
 
             // Pass 1: classify each TRIANGLE (not vertex) as front or not. Deciding per triangle is what
@@ -126,6 +128,7 @@ namespace ShieldShare
             float vv = 1f - (v.y - MinY) / rangeY;
             if (FaceSign > 0) u = 1f - u;
             if (FlipVertical) vv = 1f - vv;
+            if (FlipHorizontal) u = 1f - u;
             return new Vector2(u, vv);
         }
 

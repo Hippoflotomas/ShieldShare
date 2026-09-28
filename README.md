@@ -51,8 +51,9 @@ Valheim's own copyrighted assemblies and must not be committed.
 
 ## Known issues
 
-- **Shields on item stands show style 0** (Valheim bug, affects vanilla shields too). A shield hung on an item
-  stand reverts to its first style. Can't be fixed from ShieldShare yet; see the TODO in `MissingShields.cs`
-  for what is known. Revisit after the next Valheim patch.
+- **Shields on item stands reverting to style 0** is a Valheim bug. In testing, ShieldShare's shields kept
+  their style on item stands; the cause isn't known and nothing in ShieldShare targets it. Still to check:
+  vanilla shields on item stands with ShieldShare installed. See the TODO in `MissingShields.cs`.
+- The orientation of shields on item stands looks a little odd. Not investigated yet.
 - Shields crafted before shield tagging existed can only be identified by players without the pack once a
   player *with* the pack has loaded them (inventory, chest or stand), which adds the tag.

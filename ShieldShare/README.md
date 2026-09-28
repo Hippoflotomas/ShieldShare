@@ -31,9 +31,6 @@ inventories; put the zip back to restore them.
 The game writes a full guide, `HOW TO MAKE A SHIELD.txt`, and a face-outline template to paint over
 (`_Templates\ShieldWood - pattern guide.png`) into the drop folder.
 
-## Known issues
-- Shields on item stands show their first style (a Valheim bug that affects vanilla shields too).
-
 ## Changelog
 - 0.0.2 - Patterns are baked into the shield's own texture layout, so they no longer bleed onto the
   rim, strap and back. Icons generated automatically. Fixed pack layout (a folder per shield inside the zip,
