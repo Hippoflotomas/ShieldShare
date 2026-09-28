@@ -12,6 +12,7 @@ Player/author-facing documentation is in [`ShieldShare/README.md`](ShieldShare/R
 | `ShieldPackSync.cs` | Copies packs from the drop folder into `BepInEx\config\ShieldShare\Shields`. Fixed layout, like BannerShare: zips only, one folder per shield directly inside the zip, `shield.json` required; anything else is ignored with a warning. Folders it creates carry a `.shieldshare-source` marker; only marked folders are ever removed. |
 | `ShieldPack.cs` | Reads one shield folder: fixed names (`shield.json`, `PatternN.png`, `IconN.png`, case-insensitive), fills in defaults for fields missing from `shield.json`. |
 | `StyleBaker.cs` | Pure math, no Unity textures: works out the shield's face triangles and bakes flat pattern images into the mesh's own UV layout. |
+| `MeshReader.cs` | Reads vertices/normals/UVs/triangles from a mesh. Meshes the game ships without a CPU copy (`isReadable == false`: blackmetal, flametal, iron tower...) are copied back from the GPU vertex/index buffers and decoded. |
 | `TextureIO.cs` | Image loading via Jötunn (linear for data maps such as normal maps), saving, sprites. |
 
 ### Why patterns are baked, not UV-remapped
@@ -22,8 +23,12 @@ artwork. Instead, each front-facing triangle is drawn into the atlas cell at its
 the author's flat image through a straight-on (planar) projection of the face. The rest of the cell stays
 transparent, so everything but the face shows the plain base texture - the same way the vanilla atlas is made.
 
-"Front" is decided per triangle: the average vertex normal must point down local -Z (`normal.z < -0.5`).
-That axis was established in game for `ShieldWood`; other base prefabs may need checking.
+"Front" is decided per triangle: the average vertex normal must point along the face direction (> 0.5).
+Models differ in which way their outside faces: wood and banded face local -Z, silver and wood tower face +Z
+(the `KnownFaces` table in `ShieldShare.cs`, all confirmed in game). For shields not in the table, the side
+is worked out by checking which side's UVs land on painted pixels in the vanilla style atlas - the vanilla
+artists only painted the outside. The log line `Base '...': face = ...` shows the result and the check's numbers.
+For +Z faces the pattern's U axis is mirrored so artwork isn't back to front.
 
 ## Building
 Standard Jötunn mod stub: build in Visual Studio / `dotnet build`. The Debug post-build step (`scripts/publish.ps1`)

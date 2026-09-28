@@ -323,6 +323,20 @@ namespace ShieldShare
             return TextureIO.ToSprite(TextureIO.FromPixels(px, IconSize, IconSize, false));
         }
 
+        /// <summary>
+        ///     Which way the OUTSIDE of each tested vanilla shield faces in its own mesh space, confirmed in game.
+        ///     -1 = local -Z, +1 = local +Z. Shields not listed are worked out from the vanilla paint styles
+        ///     (see DetectFaceSign). If a shield's pattern comes out upside down, add it with flipVertical: true.
+        /// </summary>
+        private static readonly Dictionary<string, KeyValuePair<int, bool>> KnownFaces =
+            new Dictionary<string, KeyValuePair<int, bool>>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "ShieldWood",      new KeyValuePair<int, bool>(-1, false) }, // tested OK
+                { "ShieldBanded",    new KeyValuePair<int, bool>(-1, false) }, // tested OK
+                { "ShieldSilver",    new KeyValuePair<int, bool>(+1, false) }, // pattern was on the inside with -Z
+                { "ShieldWoodTower", new KeyValuePair<int, bool>(+1, false) }, // pattern was on the inside with -Z
+            };
+
         private FrontProjection GetProjection(string baseName, MeshFilter model)
         {
             FrontProjection projection;
@@ -332,20 +346,50 @@ namespace ShieldShare
             var mesh = model.sharedMesh;
             if (mesh == null)
                 return null;
-            if (!mesh.isReadable)
+
+            MeshSnapshot snap;
+            try
             {
-                Jotunn.Logger.LogError($"[ShieldShare] The mesh of '{baseName}' can't be read at runtime, so patterns can't be baked for it.");
+                snap = MeshReader.Read(mesh);
+            }
+            catch (Exception ex)
+            {
+                Jotunn.Logger.LogError($"[ShieldShare] The mesh of '{baseName}' could not be read{(mesh.isReadable ? "" : " back from the GPU")}, " +
+                                       $"so patterns can't be baked for it: {ex.Message}");
+                projections[baseName] = null;
                 return null;
             }
 
+            var renderer = model.GetComponent<MeshRenderer>();
             string partsNote;
-            int[] triangles = StyledTriangles(mesh, model.GetComponent<MeshRenderer>(), out partsNote);
-            projection = FrontProjection.Build(mesh.vertices, mesh.normals, mesh.uv, triangles);
+            int[] triangles = StyledTriangles(snap, renderer, out partsNote);
+
+            // Which side is the outside? Use the tested value if we have one; otherwise (and for the log,
+            // always) check which side the vanilla paint styles cover.
+            string detectNote;
+            int detected = DetectFaceSign(snap, triangles, renderer, out detectNote);
+            KeyValuePair<int, bool> known;
+            int faceSign;
+            bool flipV = false;
+            if (KnownFaces.TryGetValue(baseName, out known))
+            {
+                faceSign = known.Key;
+                flipV = known.Value;
+                detectNote = $"tested: {(faceSign < 0 ? "-Z" : "+Z")}; paint check: {detectNote}";
+            }
+            else
+            {
+                faceSign = detected != 0 ? detected : -1;
+                detectNote = detected != 0 ? $"paint check: {detectNote}" : $"paint check inconclusive ({detectNote}), assuming -Z";
+            }
+
+            projection = FrontProjection.Build(snap.Vertices, snap.Normals, snap.Uvs, triangles, faceSign, flipV);
             projections[baseName] = projection;
 
-            Jotunn.Logger.LogInfo($"[ShieldShare] Base '{baseName}': {projection.Front.Count} of {projection.TotalTriangles} triangles form the face " +
-                                  $"(aspect {projection.AspectRatio:F2}, front bounds X[{projection.MinX:F3},{projection.MaxX:F3}] " +
-                                  $"Y[{projection.MinY:F3},{projection.MaxY:F3}]){partsNote}.");
+            Jotunn.Logger.LogInfo($"[ShieldShare] Base '{baseName}': face = {(faceSign < 0 ? "-Z" : "+Z")} ({detectNote}); " +
+                                  $"{projection.Front.Count} of {projection.TotalTriangles} triangles form the face " +
+                                  $"(aspect {projection.AspectRatio:F2}, bounds X[{projection.MinX:F3},{projection.MaxX:F3}] " +
+                                  $"Y[{projection.MinY:F3},{projection.MaxY:F3}]){partsNote}{(snap.FromGpu ? ", mesh read from GPU" : "")}.");
             if (projection.FrontTrianglesOutsideUnitUv > 0)
                 Jotunn.Logger.LogWarning($"[ShieldShare] Base '{baseName}': {projection.FrontTrianglesOutsideUnitUv} face triangle(s) have UVs outside 0..1 " +
                                          "and will be partly unpainted.");
@@ -353,32 +397,100 @@ namespace ShieldShare
         }
 
         /// <summary>
+        ///     Returns -1 or +1 for the side (local Z) whose triangles the vanilla style atlas paints most,
+        ///     or 0 if that can't be told (no vanilla styles, or both sides equal).
+        /// </summary>
+        private static int DetectFaceSign(MeshSnapshot snap, int[] triangles, MeshRenderer renderer, out string note)
+        {
+            const int size = 256;
+            Texture vanilla = null;
+            if (renderer != null)
+                foreach (var mat in renderer.sharedMaterials)
+                    if (mat != null && mat.HasProperty("_StyleTex") && mat.GetTexture("_StyleTex") != null)
+                    {
+                        vanilla = mat.GetTexture("_StyleTex");
+                        break;
+                    }
+
+            if (vanilla == null)
+            {
+                note = "no vanilla styles to compare";
+                return 0;
+            }
+
+            Color32[] atlas;
+            try
+            {
+                atlas = ReadTexturePixels(vanilla, size);
+            }
+            catch (Exception ex)
+            {
+                note = "could not read vanilla styles: " + ex.Message;
+                return 0;
+            }
+
+            float neg = FrontProjection.PaintedFraction(snap.Vertices, snap.Normals, snap.Uvs, triangles, -1, atlas, size);
+            float pos = FrontProjection.PaintedFraction(snap.Vertices, snap.Normals, snap.Uvs, triangles, +1, atlas, size);
+            note = $"-Z {Pct(neg)} painted, +Z {Pct(pos)} painted";
+            if (Mathf.Abs(neg - pos) < 0.1f)
+                return 0;
+            return neg > pos ? -1 : 1;
+        }
+
+        private static string Pct(float f) => f < 0 ? "n/a" : Mathf.RoundToInt(f * 100f) + "%";
+
+        /// <summary>Copies any texture (even a compressed, non-readable one) into a readable pixel array via the GPU.</summary>
+        private static Color32[] ReadTexturePixels(Texture source, int size)
+        {
+            var rt = RenderTexture.GetTemporary(size, size, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+            var previous = RenderTexture.active;
+            Texture2D copy = null;
+            try
+            {
+                Graphics.Blit(source, rt);
+                RenderTexture.active = rt;
+                copy = new Texture2D(size, size, TextureFormat.RGBA32, false, true);
+                copy.ReadPixels(new Rect(0, 0, size, size), 0, 0);
+                copy.Apply();
+                return copy.GetPixels32();
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                RenderTexture.ReleaseTemporary(rt);
+                if (copy != null)
+                    UnityEngine.Object.Destroy(copy);
+            }
+        }
+
+        /// <summary>
         ///     Triangles of the mesh parts (sub-meshes) whose material actually uses the style texture.
         ///     Metal shields can have extra parts (a boss, a trim) with their own material; baking those
         ///     would paint pattern into places the styled material never looks.
         /// </summary>
-        private static int[] StyledTriangles(Mesh mesh, MeshRenderer renderer, out string note)
+        private static int[] StyledTriangles(MeshSnapshot snap, MeshRenderer renderer, out string note)
         {
             note = "";
-            if (renderer == null || mesh.subMeshCount <= 1)
-                return mesh.triangles;
+            var all = snap.SubMeshTriangles.SelectMany(t => t).ToArray();
+            if (renderer == null || snap.SubMeshTriangles.Count <= 1)
+                return all;
 
             var mats = renderer.sharedMaterials;
             var tris = new List<int>();
             var used = new List<string>();
-            for (int i = 0; i < mesh.subMeshCount && i < mats.Length; i++)
+            for (int i = 0; i < snap.SubMeshTriangles.Count && i < mats.Length; i++)
             {
                 if (mats[i] != null && mats[i].HasProperty("_StyleTex"))
                 {
-                    tris.AddRange(mesh.GetTriangles(i));
+                    tris.AddRange(snap.SubMeshTriangles[i]);
                     used.Add(i + ":" + mats[i].name);
                 }
             }
 
             if (tris.Count == 0)
-                return mesh.triangles; // nothing flagged - fall back to everything
+                return all; // nothing flagged - fall back to everything
 
-            note = $", using {used.Count} of {mesh.subMeshCount} mesh parts [{string.Join(", ", used.ToArray())}]";
+            note = $", using {used.Count} of {snap.SubMeshTriangles.Count} mesh parts [{string.Join(", ", used.ToArray())}]";
             return tris.ToArray();
         }
 

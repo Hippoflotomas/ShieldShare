@@ -25,20 +25,27 @@ namespace ShieldShare
     /// </summary>
     internal sealed class FrontProjection
     {
-        /// <summary>Vertex normal Z below this counts as "front". The face of the vanilla wood shield
-        /// points down local -Z (normal.z ~ -0.9); rims point sideways (z ~ 0).</summary>
-        public const float DefaultFrontNormalZ = -0.5f;
+        /// <summary>
+        ///     A triangle is "front" when its average vertex normal points at least this much along the
+        ///     face direction. Faces point along it (~0.9); rims point sideways (~0).
+        /// </summary>
+        public const float FrontThreshold = 0.5f;
 
         public readonly List<FrontTriangle> Front = new List<FrontTriangle>();
         public readonly List<Vector2[]> OtherUvTriangles = new List<Vector2[]>();
         public float MinX, MaxX, MinY, MaxY;
+        /// <summary>-1 = the face points down local -Z (wood, banded), +1 = local +Z (silver, wood tower).</summary>
+        public int FaceSign;
+        public bool FlipVertical;
         public int FrontTrianglesOutsideUnitUv;
         public int TotalTriangles;
 
         public float AspectRatio => (MaxX - MinX) / Mathf.Max(MaxY - MinY, 0.0001f);
 
+        /// <param name="faceSign">-1 if the outside of the shield faces local -Z, +1 if it faces +Z.</param>
+        /// <param name="flipVertical">Turn the pattern upside down (for models built the other way up).</param>
         public static FrontProjection Build(Vector3[] vertices, Vector3[] normals, Vector2[] uvs, int[] triangles,
-            float frontNormalZ = DefaultFrontNormalZ)
+            int faceSign = -1, bool flipVertical = false)
         {
             if (vertices == null || uvs == null || triangles == null)
                 throw new ArgumentNullException("Mesh data missing (vertices/uvs/triangles).");
@@ -46,7 +53,8 @@ namespace ShieldShare
                 throw new ArgumentException($"Mesh has {vertices.Length} vertices but {uvs.Length} UVs - it has no usable UV layout.");
 
             bool haveNormals = normals != null && normals.Length == vertices.Length;
-            var proj = new FrontProjection { TotalTriangles = triangles.Length / 3 };
+            faceSign = faceSign >= 0 ? 1 : -1;
+            var proj = new FrontProjection { TotalTriangles = triangles.Length / 3, FaceSign = faceSign, FlipVertical = flipVertical };
             var frontTris = new List<int>();
 
             // Pass 1: classify each TRIANGLE (not vertex) as front or not. Deciding per triangle is what
@@ -56,13 +64,7 @@ namespace ShieldShare
             for (int t = 0; t + 2 < triangles.Length; t += 3)
             {
                 int a = triangles[t], b = triangles[t + 1], c = triangles[t + 2];
-                float nz;
-                if (haveNormals)
-                    nz = (normals[a].z + normals[b].z + normals[c].z) / 3f;
-                else
-                    nz = Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]).normalized.z;
-
-                if (nz < frontNormalZ)
+                if (FacingZ(vertices, normals, haveNormals, a, b, c) * faceSign > FrontThreshold)
                 {
                     frontTris.Add(t);
                     foreach (int i in new[] { a, b, c })
@@ -93,9 +95,9 @@ namespace ShieldShare
                 var ft = new FrontTriangle
                 {
                     UvA = uvs[a], UvB = uvs[b], UvC = uvs[c],
-                    PA = Planar(vertices[a], proj.MinX, proj.MinY, rangeX, rangeY),
-                    PB = Planar(vertices[b], proj.MinX, proj.MinY, rangeX, rangeY),
-                    PC = Planar(vertices[c], proj.MinX, proj.MinY, rangeX, rangeY),
+                    PA = proj.Planar(vertices[a], rangeX, rangeY),
+                    PB = proj.Planar(vertices[b], rangeX, rangeY),
+                    PC = proj.Planar(vertices[c], rangeX, rangeY),
                 };
                 if (!InUnit(ft.UvA) || !InUnit(ft.UvB) || !InUnit(ft.UvC))
                     proj.FrontTrianglesOutsideUnitUv++;
@@ -105,9 +107,58 @@ namespace ShieldShare
             return proj;
         }
 
-        private static Vector2 Planar(Vector3 v, float minX, float minY, float rangeX, float rangeY)
+        /// <summary>Average normal Z of a triangle (or its geometric normal if the mesh has no normals).</summary>
+        public static float FacingZ(Vector3[] vertices, Vector3[] normals, bool haveNormals, int a, int b, int c)
         {
-            return new Vector2((v.x - minX) / rangeX, 1f - (v.y - minY) / rangeY);
+            if (haveNormals)
+                return (normals[a].z + normals[b].z + normals[c].z) / 3f;
+            return Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]).normalized.z;
+        }
+
+        /// <summary>
+        ///     Straight-on projection of the face onto the pattern image, as seen from outside the shield.
+        ///     For a -Z face the viewer's right is +X; for a +Z face it is -X, so U is mirrored or the
+        ///     artwork would come out back to front. V keeps the mapping confirmed in game on the wood shield.
+        /// </summary>
+        private Vector2 Planar(Vector3 v, float rangeX, float rangeY)
+        {
+            float u = (v.x - MinX) / rangeX;
+            float vv = 1f - (v.y - MinY) / rangeY;
+            if (FaceSign > 0) u = 1f - u;
+            if (FlipVertical) vv = 1f - vv;
+            return new Vector2(u, vv);
+        }
+
+        /// <summary>
+        ///     Fraction of the triangles facing <paramref name="faceSign"/> whose UVs land on painted pixels
+        ///     in ANY cell of the vanilla 4x4 style atlas. The vanilla artists only painted the outside face,
+        ///     so the side with the higher fraction is the outside. Returns -1 if no triangles face that way.
+        /// </summary>
+        public static float PaintedFraction(Vector3[] vertices, Vector3[] normals, Vector2[] uvs, int[] triangles, int faceSign,
+            Color32[] styleAtlas, int atlasSize, byte alphaThreshold = 32)
+        {
+            bool haveNormals = normals != null && normals.Length == vertices.Length;
+            int facing = 0, painted = 0;
+            int cell = atlasSize / 4;
+            for (int t = 0; t + 2 < triangles.Length; t += 3)
+            {
+                int a = triangles[t], b = triangles[t + 1], c = triangles[t + 2];
+                if (FacingZ(vertices, normals, haveNormals, a, b, c) * faceSign <= FrontThreshold)
+                    continue;
+                facing++;
+                var centre = (uvs[a] + uvs[b] + uvs[c]) / 3f;
+                int px = Mathf.Clamp((int)(Mathf.Clamp01(centre.x) * cell), 0, cell - 1);
+                int py = Mathf.Clamp((int)(Mathf.Clamp01(centre.y) * cell), 0, cell - 1);
+                for (int i = 0; i < 16; i++)
+                {
+                    if (styleAtlas[((i / 4) * cell + py) * atlasSize + (i % 4) * cell + px].a > alphaThreshold)
+                    {
+                        painted++;
+                        break;
+                    }
+                }
+            }
+            return facing == 0 ? -1f : painted / (float)facing;
         }
 
         private static bool InUnit(Vector2 uv)
