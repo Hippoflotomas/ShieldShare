@@ -1,58 +1,34 @@
-# JötunnModStub
+# ShieldShare
 
-A Valheim mod stub project using [Jötunn](https://github.com/Valheim-Modding/Jotunn) including build tools and a basic Unity project stub.
-There is no actual plugin content included, just a minimum plugin class. 
+A Valheim mod (BepInEx + [Jötunn](https://github.com/Valheim-Modding/Jotunn)) for easily adding and sharing custom shield styles.
+Player/author-facing documentation is in [`ShieldShare/README.md`](ShieldShare/README.md) and in the
+`HOW TO MAKE A SHIELD.txt` guide the mod writes into `Documents\Valheim Custom Shields\` (source: `ShieldShare/AuthorGuide.cs`).
 
-#  Setup Guide
+## How it works
 
-Please see [Jötunn Docs](https://valheim-modding.github.io/Jotunn/guides/overview.html) detailed documentation and setup.
+| File | Job |
+|---|---|
+| `ShieldShare.cs` | Plugin entry point. On `PrefabManager.OnVanillaPrefabsAvailable` it syncs packs, clones the base shield for each pack, applies optional texture layers, builds the styles and registers the item with Jötunn. Also writes the author templates. |
+| `ShieldPackSync.cs` | Copies packs from the drop folder (zips in any layout, or plain folders) into `BepInEx\config\ShieldShare\Shields`. Folders it creates carry a `.shieldshare-source` marker; only marked folders are ever removed. |
+| `ShieldPack.cs` | Reads one pack folder: finds files case-insensitively, reads the optional `shield.json`, fills in defaults. |
+| `StyleBaker.cs` | Pure math, no Unity textures: works out the shield's face triangles and bakes flat pattern images into the mesh's own UV layout. |
+| `TextureIO.cs` | PNG/JPG loading (linear for data maps such as normal maps), saving, sprites. |
 
-### Post Build automations
+### Why patterns are baked, not UV-remapped
+Valheim's `Custom/Creature` shader reads the style atlas (`_StyleTex`, a 4x4 grid, style 0 bottom-left) through
+the mesh's **original UVs**, and the face, rim, strap and back all share that UV space. Moving only the face UVs
+(the approach in 0.0.1) left the other parts pointing into the same cell, so they showed stretched pieces of the
+artwork. Instead, each front-facing triangle is drawn into the atlas cell at its vanilla UV position, sampling
+the author's flat image through a straight-on (planar) projection of the face. The rest of the cell stays
+transparent, so everything but the face shows the plain base texture - the same way the vanilla atlas is made.
 
-Included in this repo is a PowerShell script `publish.ps1`.
-The script is referenced in the project file as a post-build event.
-Depending on the chosen configuration in Visual Studio the script executes the following actions.
+"Front" is decided per triangle: the average vertex normal must point down local -Z (`normal.z < -0.5`).
+That axis was established in game for `ShieldWood`; other base prefabs may need checking.
 
-### Building Debug
+## Building
+Standard Jötunn mod stub: build in Visual Studio / `dotnet build`. The Debug post-build step (`scripts/publish.ps1`)
+copies the plugin into `<Valheim>\BepInEx\plugins` or `MOD_DEPLOYPATH`; Release builds a Thunderstore zip.
+See the [Jötunn docs](https://valheim-modding.github.io/Jotunn/guides/overview.html) for environment setup.
 
-The compiled dll and a dll.mdb debug file are copied to `<ValheimDir>\BepInEx\plugins` (or the path set in MOD_DEPLOYPATH).
-
-### Building Release
-
-A compressed file with the binaries is created in `<JotunnModStub>\Packages`ready for upload to ThunderStore.
-Dont forget to include your information in the manifest.json and to change the project's readme file.
-
-## Developing Assets with Unity
-
-New Assets can be created with Unity and imported into Valheim using the mod.
-A Unity project is included in this repository under `<JotunnModStub>\JotunnModUnity`.
-
-### Unity Editor Setup
-
-1. [Download](https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup.exe) UnityHub directly from Unity or install it with the Visual Studio Installer via `Individual Components` -> `Visual Studio Tools for Unity`
-2. You will need an Unity account to register your PC and get a free licence. Create the account, login with it in Unity Hub and get your licence via `Settings` -> `Licence Management`
-3. Install Unity Editor version 2022.3.17f
-4. Compile the project. This copies all assemblies into `<JotunnModStub>\JotunnModUnity\Assets\Assemblies`. Don't open Unity yet before this step, it will remove assembly references.
-5. **Warning:** These assembly files are copyrighted material and you can theoretically get into trouble when you distribute them in your github repository. To avoid that there is a .gitignore file in the Unity project folder. Keep that when you clone or copy this repository
-6. Open Unity Hub and add the JotunnModUnity project
-7. Open the project in Unity
-8. Install the `AssetBundle Browser` package in the Unity Editor via `Window`-> `Package Manager` for easy bundle creation
-
-## Debugging
-
-See the Wiki page [Debugging Plugins via IDE](https://github.com/Valheim-Modding/Wiki/wiki/Debugging-Plugins-via-IDE) for more information
-
-## Actions after a game update
-
-When Valheim updates it is likely that parts of the assembly files change.
-If this is the case, the references to the assembly files must be renewed in Visual Studio and Unity.
-
-### Prebuild actions
-
-1. There is a file called DoPrebuild.props included in the solution. When you set its only value to true, Jötunn will automatically generate publicized assemblies for you. Otherwise you have to do this step manually.
-
-### Unity actions
-
-1. Copy all `assembly_*.dll` from `<ValheimDir>\valheim_Data\Managed` into `<JotunnModStub>\JotunnModUnity\Assets\Assemblies`. <br />
-  **Do this directly in the filesystem - don't import the dlls in Unity**.
-2. Go to Unity Editor and press `Ctrl+R`. This reloads all files from the filesystem and "re-imports" the copied dlls into the project.
+`JotunnModStubUnity/Assets/Assemblies/*.dll` are copied in by the build and are **gitignored** - they include
+Valheim's own copyrighted assemblies and must not be committed.

@@ -1,10 +1,10 @@
-﻿{
-  "name": "JotunnModStub",
-  "description": "",
-  "version_number": "0.0.1",
+{
+  "name": "ShieldShare",
+  "description": "Add and share custom shield designs - drop a zip in Documents\\Valheim Custom Shields.",
+  "version_number": "0.0.2",
   "website_url": "",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2333",
-    "ValheimModding-Jotunn-2.26.1"
+    "ValheimModding-Jotunn-2.30.2"
   ]
 }
