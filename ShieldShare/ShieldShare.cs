@@ -362,15 +362,15 @@ namespace ShieldShare
             new Dictionary<string, BaseSettings>(StringComparer.OrdinalIgnoreCase)
             {
                 //                                          face  flipV  mask
-                { "ShieldWood",            new BaseSettings(-1, false, false) }, // correct (test 2)
-                { "ShieldBanded",          new BaseSettings(-1, false, false) }, // correct (test 2)
-                { "ShieldWoodTower",       new BaseSettings(+1, false, false) }, // correct (test 3)
-                { "ShieldSilver",          new BaseSettings(+1, true,  false) }, // test 3: right side, upside down
-                { "ShieldBlackmetal",      new BaseSettings(+1, false, true)  }, // test 3: was on the inside with -Z
-                { "ShieldBlackmetalTower", new BaseSettings(+1, false, true)  }, // test 3: was on the inside with -Z
-                { "ShieldIronTower",       new BaseSettings(+1, false, true)  }, // test 3: everywhere but the outside with -Z
-                { "ShieldFlametal",        new BaseSettings(+1, false, true)  }, // test 3: both sides + metal with -Z; paint check says +Z
-                { "ShieldFlametalTower",   new BaseSettings(-1, false, true)  }, // test 3: right side, but on metal parts
+                { "ShieldWood",            new BaseSettings(-1, false, false) }, // verified in game
+                { "ShieldBanded",          new BaseSettings(-1, false, false) }, // verified in game
+                { "ShieldWoodTower",       new BaseSettings(+1, false, false) }, // verified in game
+                { "ShieldSilver",          new BaseSettings(+1, true,  false) }, // verified in game
+                { "ShieldBlackmetal",      new BaseSettings(+1, true,  true)  }, // side + mask verified; flip from test 4
+                { "ShieldBlackmetalTower", new BaseSettings(+1, true,  true)  }, // side + mask verified; flip from test 4
+                { "ShieldIronTower",       new BaseSettings(+1, true,  true)  }, // side + mask verified; flip from test 4
+                { "ShieldFlametal",        new BaseSettings(+1, false, true)  }, // verified in game
+                { "ShieldFlametalTower",   new BaseSettings(-1, false, true)  }, // verified in game
             };
 
         /// <summary>Vanilla style atlas of each base, for the paint-area mask.</summary>
