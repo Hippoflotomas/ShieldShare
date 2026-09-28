@@ -1,4 +1,4 @@
-﻿using BepInEx;
+using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using Jotunn.Configs;
@@ -20,7 +20,7 @@ namespace ShieldShare
     {
         public const string PluginGUID = "com.hippotech.shieldshare";
         public const string PluginName = "ShieldShare";
-        public const string PluginVersion = "1.0.0";
+        public const string PluginVersion = "1.0.1";
         internal const string ItemPrefabPrefix = "ShieldShare_";
         private const string DropFolderName = "Valheim Custom Shields";
         internal const string BuiltInPrefix = "Missing_";            // ShieldShare_Missing_ShieldWood, ...
@@ -67,8 +67,26 @@ namespace ShieldShare
             PrefabManager.OnVanillaPrefabsAvailable += LoadAndRegisterShields;
 
             // Patches for shields other players have that we don't (see MissingShields.cs).
+            // Applied one class at a time: if a game update breaks one patch, only that feature is lost,
+            // instead of PatchAll() stopping at the first failure and leaving everything unpatched.
             harmony = new Harmony(PluginGUID);
-            harmony.PatchAll();
+            int applied = 0, failed = 0;
+            foreach (var type in typeof(MissingShields).GetNestedTypes(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public))
+            {
+                if (!type.IsDefined(typeof(HarmonyPatch), false))
+                    continue;
+                try
+                {
+                    harmony.CreateClassProcessor(type).Patch();
+                    applied++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    Jotunn.Logger.LogWarning($"[ShieldShare] Patch {type.Name} could not be applied on this game build: {ex.Message}");
+                }
+            }
+            Jotunn.Logger.LogInfo($"[ShieldShare] Applied {applied} patch(es){(failed > 0 ? $", {failed} skipped" : "")}.");
         }
 
         private void Update()

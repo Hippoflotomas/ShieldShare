@@ -369,15 +369,52 @@ namespace ShieldShare
         ///     is saved. For our shields: register a stand-in first; and when we DO have the shield, add the
         ///     ID/base tag to items made before tagging existed.
         /// </summary>
-        [HarmonyPatch(typeof(Inventory), "AddItem", new[]
-        {
-            typeof(int), typeof(int), typeof(float), typeof(Vector2i), typeof(bool), typeof(int), typeof(int), typeof(long),
-            typeof(string), typeof(Dictionary<string, string>), typeof(int), typeof(bool), typeof(bool), typeof(bool)
-        })]
+        ///
+        ///     The exact overload differs between game builds (the client and the dedicated server builds have had
+        ///     different parameter lists), so instead of a fixed signature it is found at startup: the AddItem
+        ///     whose first parameter is the int prefab hash and which takes the custom-data dictionary.
+        ///     If a build has no such overload, this one patch is skipped - nothing else is affected.
+        [HarmonyPatch]
         private static class Inventory_AddItem_ByHash_Patch
         {
-            private static void Prefix(int prefabHash, ref Dictionary<string, string> customData)
+            private static MethodBase target;
+            private static int hashIndex = -1, customDataIndex = -1;
+
+            private static MethodBase FindTarget()
             {
+                foreach (var m in typeof(Inventory).GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    if (m.Name != "AddItem")
+                        continue;
+                    var ps = m.GetParameters();
+                    if (ps.Length < 2 || ps[0].ParameterType != typeof(int))
+                        continue;
+                    int dict = Array.FindIndex(ps, p => p.ParameterType == typeof(Dictionary<string, string>));
+                    if (dict < 0)
+                        continue;
+                    hashIndex = 0;
+                    customDataIndex = dict;
+                    return m;
+                }
+                return null;
+            }
+
+            private static bool Prepare()
+            {
+                if (target == null)
+                    target = FindTarget();
+                if (target == null)
+                    Jotunn.Logger.LogWarning("[ShieldShare] This game build has no Inventory.AddItem(prefabHash, ..., customData, ...) - " +
+                                             "shields from missing packs in chests and inventories can't be protected.");
+                return target != null;
+            }
+
+            private static MethodBase TargetMethod() => target ?? FindTarget();
+
+            private static void Prefix(object[] __args)
+            {
+                int prefabHash = (int)__args[hashIndex];
+                var customData = (Dictionary<string, string>)__args[customDataIndex];
                 if (ObjectDB.instance == null)
                     return;
                 var prefab = ObjectDB.instance.GetItemPrefab(prefabHash);
@@ -390,7 +427,10 @@ namespace ShieldShare
                     if (!LocalBases.TryGetValue(localId, out localBase))
                         return;
                     if (customData == null)
+                    {
                         customData = new Dictionary<string, string>();
+                        __args[customDataIndex] = customData; // Harmony passes __args changes on to the game
+                    }
                     if (!customData.ContainsKey(ItemIdKey))
                     {
                         customData[ItemIdKey] = localId;

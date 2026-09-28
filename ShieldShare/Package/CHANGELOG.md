@@ -1,3 +1,6 @@
+## Version 1.0.1
+- Fixed: on game builds where Inventory.AddItem has a different parameter list (flagged for the Valheim dedicated server build), the mod's patches could fail to load. The inventory patch now finds the right method on any build, and every patch loads on its own, so a future game update can only switch off the one feature it breaks - with a warning in the log.
+
 ## Version 1.0.0
 First public release.
 - Custom shield styles from zip packs: one folder per shield inside the zip, with a shield.json and Pattern1.png, Pattern2.png ... (up to 16 styles). Players pick the style at the workbench, like vanilla shields.
