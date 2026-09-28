@@ -39,6 +39,8 @@ namespace ShieldShare
         private static readonly FieldInfo VisNViewField = AccessTools.Field(typeof(VisEquipment), "m_nview");
         private static readonly FieldInfo ItemByHashField = AccessTools.Field(typeof(ObjectDB), "m_itemByHash");
         private static readonly FieldInfo NamedPrefabsField = AccessTools.Field(typeof(ZNetScene), "m_namedPrefabs");
+        private static readonly FieldInfo ItemStandNViewField = AccessTools.Field(typeof(ItemStand), "m_nview");
+        private static readonly FieldInfo ArmorStandNViewField = AccessTools.Field(typeof(ArmorStand), "m_nview");
 
         private static ItemDrop.ItemData LeftItem(Humanoid h) => (ItemDrop.ItemData)LeftItemField.GetValue(h);
         private static ItemDrop.ItemData HiddenLeftItem(Humanoid h) => (ItemDrop.ItemData)HiddenLeftItemField.GetValue(h);
@@ -51,6 +53,13 @@ namespace ShieldShare
         // ------------------------------------------------------------------------------------------
 
         public static string PrefabName(string id) => ShieldShare.ItemPrefabPrefix + id;
+
+        /// <summary>
+        ///     ZDO key for the item saved at slot <paramref name="index"/> - mirrors ItemDrop.SaveToZDO, which is
+        ///     called with index -1 for dropped items and item stands, and the slot number (0, 1, ...) for armour stands.
+        /// </summary>
+        private const int WholeObjectIndex = -1;
+        private static string ItemTagKey(int index) => index < 0 ? ZdoDropKey : index + "_" + ZdoDropKey;
 
         /// <summary>"ID|Base" for a ShieldShare item, or "" for anything else.</summary>
         public static string TagFor(ItemDrop.ItemData item)
@@ -283,6 +292,79 @@ namespace ShieldShare
                 string id, baseName;
                 if (ParseTag(zdo.GetString(ZdoDropKey, ""), out id, out baseName) && PrefabName(id).GetStableHashCode() == zdo.GetPrefab())
                     EnsureExists(id, baseName, "on the ground");
+            }
+        }
+
+        /// <summary>
+        ///     Owner side: whenever an item is saved into a ZDO (dropped item, item stand, armour stand slot),
+        ///     record which ShieldShare shield it is - or clear the record if something else went in the slot.
+        /// </summary>
+        [HarmonyPatch(typeof(ItemDrop), "SaveToZDO", new[] { typeof(ItemDrop.ItemData), typeof(ZDO), typeof(int) })]
+        private static class ItemDrop_SaveToZDO_Patch
+        {
+            private static void Postfix(ItemDrop.ItemData itemData, ZDO zdo, int index)
+            {
+                if (zdo == null)
+                    return;
+                string key = ItemTagKey(index);
+                string tag = TagFor(itemData);
+                if (tag.Length > 0 || zdo.GetString(key, "").Length > 0)
+                    SetIfChanged(zdo, key, tag);
+            }
+        }
+
+        /// <summary>Shared by both stands: stand in for a shield we don't have, or tag an old shield we do have.</summary>
+        private static void CheckStandSlot(ZNetView nview, int index, int itemHash, string whereSeen)
+        {
+            if (itemHash == 0 || nview == null || !nview.IsValid() || ObjectDB.instance == null)
+                return;
+            var zdo = nview.GetZDO();
+            string key = ItemTagKey(index);
+            var prefab = ObjectDB.instance.GetItemPrefab(itemHash);
+
+            if (prefab != null)
+            {
+                // Shields put on stands before tagging existed: the first owner who has the pack tags them.
+                if (nview.IsOwner() && zdo.GetString(key, "").Length == 0
+                    && prefab.name.StartsWith(ShieldShare.ItemPrefabPrefix, StringComparison.Ordinal))
+                {
+                    string localId = prefab.name.Substring(ShieldShare.ItemPrefabPrefix.Length);
+                    string localBase;
+                    if (LocalBases.TryGetValue(localId, out localBase))
+                        zdo.Set(key, localId + "|" + localBase);
+                }
+                return;
+            }
+
+            string id, baseName;
+            if (ParseTag(zdo.GetString(key, ""), out id, out baseName) && PrefabName(id).GetStableHashCode() == itemHash)
+                EnsureExists(id, baseName, whereSeen);
+        }
+
+        // TODO / KNOWN ISSUE - cannot be fixed yet (Valheim bug, not ShieldShare):
+        // a shield hung on an ITEM STAND reverts to style 0, whatever style it was made in.
+        // What we know: ItemStand.SetVisualItem(itemHash, variant, ...) ends by calling
+        // IEquipmentVisual.Setup(m_visualVariant) on the first IEquipmentVisual in the attached object.
+        // Where the style is actually lost hasn't been traced. Revisit after the next Valheim patch.
+        // Not yet checked whether armour stands have the same problem.
+
+        /// <summary>Item stands (wall mounts): register the stand-in before the stand looks the shield up.</summary>
+        [HarmonyPatch(typeof(ItemStand), "SetVisualItem", new[] { typeof(int), typeof(int), typeof(int), typeof(int) })]
+        private static class ItemStand_SetVisualItem_Patch
+        {
+            private static void Prefix(ItemStand __instance, int itemHash)
+            {
+                CheckStandSlot((ZNetView)ItemStandNViewField.GetValue(__instance), WholeObjectIndex, itemHash, "on an item stand");
+            }
+        }
+
+        /// <summary>Armour stands: one check per slot.</summary>
+        [HarmonyPatch(typeof(ArmorStand), "SetVisualItem", new[] { typeof(int), typeof(int), typeof(int) })]
+        private static class ArmorStand_SetVisualItem_Patch
+        {
+            private static void Prefix(ArmorStand __instance, int index, int itemHash)
+            {
+                CheckStandSlot((ZNetView)ArmorStandNViewField.GetValue(__instance), index, itemHash, "on an armour stand");
             }
         }
 

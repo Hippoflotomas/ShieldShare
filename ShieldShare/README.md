@@ -5,8 +5,8 @@ Add your own shield designs to Valheim, and share them with friends as a single 
 ## Installation
 Install with a mod manager (r2modman / Thunderstore), or copy `ShieldShare.dll` into `BepInEx\plugins\ShieldShare\`.
 Requires BepInEx and Jötunn. Everyone on a server needs the mod, and should have the same shield packs:
-a shield from a pack you don't have shows as a magenta "missing" shield (in hand, on the ground or in a
-chest) and a message lists the missing shields in chat. Nothing is lost - install the pack and it's back.
+a shield from a pack you don't have shows as a magenta "missing" shield (in hand, on the ground, in a
+chest, or on an item or armour stand) and a message lists the missing shields in chat. Nothing is lost - install the pack and it's back.
 
 ## Adding shields
 Drop shield pack `.zip` files into `Documents\Valheim Custom Shields\` (don't unzip them) and start the game.
@@ -30,6 +30,9 @@ If you remove a pack, shields from it turn into magenta "missing" shields instea
 inventories; put the zip back to restore them.
 The game writes a full guide, `HOW TO MAKE A SHIELD.txt`, and a face-outline template to paint over
 (`_Templates\ShieldWood - pattern guide.png`) into the drop folder.
+
+## Known issues
+- Shields on item stands show their first style (a Valheim bug that affects vanilla shields too).
 
 ## Changelog
 - 0.0.2 - Patterns are baked into the shield's own texture layout, so they no longer bleed onto the

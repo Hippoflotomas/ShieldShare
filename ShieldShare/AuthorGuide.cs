@@ -116,7 +116,8 @@ magenta and black ""missing"" shields. Put the zip back and they return to norma
 PLAYING WITH OTHERS
 -------------------
 If another player has a shield from a pack you don't have, you'll see it as a magenta and black
-""missing"" shield - in their hand, on the ground or in a chest - and a message tells you to check
+""missing"" shield - in their hand, on the ground, in a chest or on an item or armour stand - and a
+message tells you to check
 chat, where each missing shield is listed. Nothing is lost: once you install the pack and restart,
 those shields look normal again. Everyone should use the same packs.
 

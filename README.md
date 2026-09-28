@@ -14,7 +14,7 @@ Player/author-facing documentation is in [`ShieldShare/README.md`](ShieldShare/R
 | `StyleBaker.cs` | Pure math, no Unity textures: works out the shield's face triangles and bakes flat pattern images into the mesh's own UV layout. |
 | `MeshReader.cs` | Reads vertices/normals/UVs/triangles from a mesh. Meshes the game ships without a CPU copy (`isReadable == false`: blackmetal, flametal, iron tower...) are copied back from the GPU vertex/index buffers and decoded. |
 | `FallbackPatterns.cs` | The magenta/black "missing" patterns from `Assets/*.png`, embedded in the DLL (`EmbeddedResource` in the .csproj; name before ` - ` = base prefab). Used for the built-in `ShieldShare_Missing_<Base>` shields (hidden unless `ShowMissingShields` is on), for pattern images that fail to load, and for stand-ins. |
-| `MissingShields.cs` | Shields other players have that you don't. The game only passes item hashes around, so ShieldShare tags its shields: item custom data (`ShieldShare.Id` / `ShieldShare.Base`), the player's ZDO (`ShieldShare.Left` / `ShieldShare.LeftBack` = `ID|Base`) and dropped items' ZDO (`ShieldShare.Item`). Harmony patches on `Humanoid.SetupVisEquipment`, `VisEquipment.UpdateEquipmentVisuals`, `ItemDrop.Start`, `ZNetScene.CreateObject` and `Inventory.AddItem(int prefabHash, …)` read the tags and register a stand-in on the spot - a copy of the built-in magenta shield for that base under the shield's real name - so nothing is converted or deleted. Notices work like BannerShare's: after 2 s of quiet, one centre message and one chat line per shield. |
+| `MissingShields.cs` | Shields other players have that you don't. The game only passes item hashes around, so ShieldShare tags its shields: item custom data (`ShieldShare.Id` / `ShieldShare.Base`), the player's ZDO (`ShieldShare.Left` / `ShieldShare.LeftBack` = `ID|Base`) and dropped items' ZDO (`ShieldShare.Item`). Item and armour stands are tagged per slot from `ItemDrop.SaveToZDO` (`ShieldShare.Item` for index -1 - item stands and dropped items - or `<slot>_ShieldShare.Item` for armour stand slots). Harmony patches on `Humanoid.SetupVisEquipment`, `VisEquipment.UpdateEquipmentVisuals`, `ItemDrop.Start`, `ItemDrop.SaveToZDO`, `ZNetScene.CreateObject`, `ItemStand.SetVisualItem`, `ArmorStand.SetVisualItem` and `Inventory.AddItem(int prefabHash, …)` read the tags and register a stand-in on the spot - a copy of the built-in magenta shield for that base under the shield's real name - so nothing is converted or deleted. Notices work like BannerShare's: after 2 s of quiet, one centre message and one chat line per shield. |
 | `KnownShields.cs` | `known-shields.json`: every pack shield ever registered (base, name, highest style count). Shields whose pack is gone are registered as magenta stand-ins so the game doesn't delete players' copies. |
 | `TextureIO.cs` | Image loading via Jötunn (linear for data maps such as normal maps), saving, sprites. |
 
@@ -48,3 +48,11 @@ See the [Jötunn docs](https://valheim-modding.github.io/Jotunn/guides/overview.
 
 `JotunnModStubUnity/Assets/Assemblies/*.dll` are copied in by the build and are **gitignored** - they include
 Valheim's own copyrighted assemblies and must not be committed.
+
+## Known issues
+
+- **Shields on item stands show style 0** (Valheim bug, affects vanilla shields too). A shield hung on an item
+  stand reverts to its first style. Can't be fixed from ShieldShare yet; see the TODO in `MissingShields.cs`
+  for what is known. Revisit after the next Valheim patch.
+- Shields crafted before shield tagging existed can only be identified by players without the pack once a
+  player *with* the pack has loaded them (inventory, chest or stand), which adds the tag.
