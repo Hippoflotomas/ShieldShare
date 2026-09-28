@@ -147,7 +147,7 @@ namespace ShieldShare
             ApplyTextureLayers(pack, shieldPrefab);
 
             var model = FindModel(shieldPrefab);
-            FrontProjection projection = model != null ? GetProjection(def.BasePrefab, model.sharedMesh) : null;
+            FrontProjection projection = model != null ? GetProjection(def.BasePrefab, model) : null;
 
             Texture2D styleTex = null;
             Sprite[] icons = null;
@@ -323,12 +323,13 @@ namespace ShieldShare
             return TextureIO.ToSprite(TextureIO.FromPixels(px, IconSize, IconSize, false));
         }
 
-        private FrontProjection GetProjection(string baseName, Mesh mesh)
+        private FrontProjection GetProjection(string baseName, MeshFilter model)
         {
             FrontProjection projection;
             if (projections.TryGetValue(baseName, out projection))
                 return projection;
 
+            var mesh = model.sharedMesh;
             if (mesh == null)
                 return null;
             if (!mesh.isReadable)
@@ -337,15 +338,48 @@ namespace ShieldShare
                 return null;
             }
 
-            projection = FrontProjection.Build(mesh.vertices, mesh.normals, mesh.uv, mesh.triangles);
+            string partsNote;
+            int[] triangles = StyledTriangles(mesh, model.GetComponent<MeshRenderer>(), out partsNote);
+            projection = FrontProjection.Build(mesh.vertices, mesh.normals, mesh.uv, triangles);
             projections[baseName] = projection;
 
             Jotunn.Logger.LogInfo($"[ShieldShare] Base '{baseName}': {projection.Front.Count} of {projection.TotalTriangles} triangles form the face " +
-                                  $"(aspect {projection.AspectRatio:F2}).");
+                                  $"(aspect {projection.AspectRatio:F2}, front bounds X[{projection.MinX:F3},{projection.MaxX:F3}] " +
+                                  $"Y[{projection.MinY:F3},{projection.MaxY:F3}]){partsNote}.");
             if (projection.FrontTrianglesOutsideUnitUv > 0)
                 Jotunn.Logger.LogWarning($"[ShieldShare] Base '{baseName}': {projection.FrontTrianglesOutsideUnitUv} face triangle(s) have UVs outside 0..1 " +
                                          "and will be partly unpainted.");
             return projection;
+        }
+
+        /// <summary>
+        ///     Triangles of the mesh parts (sub-meshes) whose material actually uses the style texture.
+        ///     Metal shields can have extra parts (a boss, a trim) with their own material; baking those
+        ///     would paint pattern into places the styled material never looks.
+        /// </summary>
+        private static int[] StyledTriangles(Mesh mesh, MeshRenderer renderer, out string note)
+        {
+            note = "";
+            if (renderer == null || mesh.subMeshCount <= 1)
+                return mesh.triangles;
+
+            var mats = renderer.sharedMaterials;
+            var tris = new List<int>();
+            var used = new List<string>();
+            for (int i = 0; i < mesh.subMeshCount && i < mats.Length; i++)
+            {
+                if (mats[i] != null && mats[i].HasProperty("_StyleTex"))
+                {
+                    tris.AddRange(mesh.GetTriangles(i));
+                    used.Add(i + ":" + mats[i].name);
+                }
+            }
+
+            if (tris.Count == 0)
+                return mesh.triangles; // nothing flagged - fall back to everything
+
+            note = $", using {used.Count} of {mesh.subMeshCount} mesh parts [{string.Join(", ", used.ToArray())}]";
+            return tris.ToArray();
         }
 
         /// <summary>The shield's visible model: the mesh whose material supports styles, else the biggest mesh.</summary>
@@ -457,7 +491,7 @@ namespace ShieldShare
                     var vanilla = PrefabManager.Instance.GetPrefab(ShieldPack.DefaultBasePrefab);
                     var model = vanilla != null ? FindModel(vanilla) : null;
                     if (model != null)
-                        GetProjection(ShieldPack.DefaultBasePrefab, model.sharedMesh);
+                        GetProjection(ShieldPack.DefaultBasePrefab, model);
                 }
 
                 string folder = Path.Combine(dropFolder, ShieldPackSync.TemplatesFolderName);
