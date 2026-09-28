@@ -110,11 +110,14 @@ namespace ShieldShare
 
         private void RegisterShield(ShieldPack pack)
         {
-            var def = pack.Definition;
             foreach (var warning in pack.Warnings)
                 Jotunn.Logger.LogWarning($"[ShieldShare] '{pack.Name}': {warning}");
-            if (pack.JsonError != null)
-                Jotunn.Logger.LogError($"[ShieldShare] '{pack.Name}/shield.json' could not be read, so defaults are used: {pack.JsonError}");
+            if (pack.Problem != null)
+            {
+                Jotunn.Logger.LogError($"[ShieldShare] Skipping '{pack.Name}': {pack.Problem}.");
+                return;
+            }
+            var def = pack.Definition;
 
             string prefabName = ItemPrefabPrefix + ShieldPackSync.SafeFolderName(pack.Name);
             if (PrefabManager.Instance.GetPrefab(prefabName) != null)

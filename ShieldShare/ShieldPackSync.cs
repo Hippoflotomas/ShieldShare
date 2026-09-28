@@ -10,20 +10,25 @@ namespace ShieldShare
     ///     Copies shield packs from the player-facing drop folder (Documents\Valheim Custom Shields)
     ///     into the mod's working folder (BepInEx\config\ShieldShare\Shields).
     ///
-    ///     The drop folder accepts, in any mix:
-    ///       - .zip files, laid out any way (files at the root, in one folder, in nested folders,
-    ///         several shields per zip). A zip with files at its root becomes a shield named after the zip.
-    ///       - plain folders (handy while authoring - no zipping needed to test a change).
+    ///     Pack layout is fixed, the same as BannerShare:
+    ///       MyShields.zip
+    ///         ShieldID/            one folder per shield, directly inside the zip
+    ///           shield.json        required
+    ///           Pattern1.png ...
+    ///         AnotherShieldID/
+    ///           ...
+    ///     Files at the top of the zip, folders nested deeper, and folders without shield.json are
+    ///     ignored (with a warning in the log). Loose folders in the drop folder are ignored too -
+    ///     only .zip files are read.
     ///
     ///     Every folder we create is tagged with a marker file. On the next launch, tagged folders whose
-    ///     source has gone are removed; untagged folders (added by hand, or the built-in "Missing"
+    ///     zip has gone are removed; untagged folders (added by hand, or the built-in "Missing"
     ///     fallback) are never touched.
     /// </summary>
     internal static class ShieldPackSync
     {
         public const string MarkerFileName = ".shieldshare-source";
         public const string TemplatesFolderName = "_Templates";
-        private const int MaxFolderDepth = 4;
 
         public static void Sync(string dropFolder, string shieldsFolder)
         {
@@ -37,7 +42,7 @@ namespace ShieldShare
                 {
                     int count = SyncZip(zipPath, shieldsFolder, produced);
                     if (count == 0)
-                        Jotunn.Logger.LogWarning($"[ShieldShare] '{zipName}' has no shield files in it (expected shield.json, PatternN.png, IconN.png...).");
+                        Jotunn.Logger.LogWarning($"[ShieldShare] '{zipName}' contains no shields. Each shield must be a folder inside the zip, with {ShieldPack.JsonFileName} and its images in that folder.");
                     else
                         Jotunn.Logger.LogInfo($"[ShieldShare] Synced {count} shield(s) from '{zipName}'.");
                 }
@@ -48,32 +53,16 @@ namespace ShieldShare
                 }
             }
 
-            foreach (var packDir in FindPackFolders(dropFolder, 0))
+            foreach (var dir in Directory.GetDirectories(dropFolder))
             {
-                string name = SafeFolderName(Path.GetFileName(packDir));
-                try
-                {
-                    if (!produced.Add(name))
-                    {
-                        Jotunn.Logger.LogWarning($"[ShieldShare] Two shields are called '{name}' - skipping the folder '{packDir}'. Rename one of them.");
-                        continue;
-                    }
-                    string target = PrepareTarget(shieldsFolder, name, "folder:" + packDir);
-                    foreach (var file in Directory.GetFiles(packDir))
-                        if (!Path.GetFileName(file).StartsWith("."))
-                            File.Copy(file, Path.Combine(target, Path.GetFileName(file)), true);
-                    Jotunn.Logger.LogInfo($"[ShieldShare] Synced shield folder '{name}'.");
-                }
-                catch (Exception ex)
-                {
-                    anyFailures = true;
-                    Jotunn.Logger.LogError($"[ShieldShare] Failed to copy shield folder '{packDir}': {ex.Message}");
-                }
+                string name = Path.GetFileName(dir);
+                if (!name.StartsWith("_") && !name.StartsWith("."))
+                    Jotunn.Logger.LogWarning($"[ShieldShare] The folder '{name}' in the drop folder is ignored - zip it first (the shield folder goes inside the zip).");
             }
 
             if (anyFailures)
             {
-                Jotunn.Logger.LogWarning("[ShieldShare] Skipping clean-up this launch because something failed to read.");
+                Jotunn.Logger.LogWarning("[ShieldShare] Skipping clean-up this launch because a zip failed to read.");
                 return;
             }
 
@@ -86,7 +75,7 @@ namespace ShieldShare
                 try
                 {
                     Directory.Delete(existing, true);
-                    Jotunn.Logger.LogInfo($"[ShieldShare] Removed '{name}' - it is no longer in the drop folder.");
+                    Jotunn.Logger.LogInfo($"[ShieldShare] Removed '{name}' - no zip in the drop folder contains it any more.");
                 }
                 catch (Exception ex)
                 {
@@ -97,74 +86,81 @@ namespace ShieldShare
 
         private static int SyncZip(string zipPath, string shieldsFolder, HashSet<string> produced)
         {
-            string zipStem = Path.GetFileNameWithoutExtension(zipPath);
+            string zipName = Path.GetFileName(zipPath);
             int count = 0;
 
             using (var archive = ZipFile.OpenRead(zipPath))
             {
-                // Group file entries by the folder they sit in inside the zip. Windows' own zip tool and
-                // some others write '\' separators, so normalise them.
-                var byDir = new Dictionary<string, List<ZipArchiveEntry>>(StringComparer.OrdinalIgnoreCase);
+                // Group entries by their top-level folder. Some zip tools write '\' separators, so normalise.
+                var byFolder = new Dictionary<string, List<ZipArchiveEntry>>(StringComparer.OrdinalIgnoreCase);
+                var ignoredRootFiles = new List<string>();
+                var ignoredNested = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
                 foreach (var entry in archive.Entries)
                 {
-                    string full = entry.FullName.Replace('\\', '/');
+                    string full = entry.FullName.Replace('\\', '/').TrimStart('/');
                     if (full.EndsWith("/") || full.StartsWith("__MACOSX/", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    string fileName = full.Substring(full.LastIndexOf('/') + 1);
-                    if (fileName.StartsWith("."))
-                        continue;
+                        continue; // folder entries, macOS junk
 
-                    string dir = full.Contains("/") ? full.Substring(0, full.LastIndexOf('/')) : "";
+                    string[] parts = full.Split('/');
+                    if (parts[parts.Length - 1].StartsWith("."))
+                        continue; // hidden files (.DS_Store etc.)
+
+                    if (parts.Length == 1)
+                    {
+                        ignoredRootFiles.Add(full);
+                        continue;
+                    }
+                    if (parts.Length > 2)
+                    {
+                        ignoredNested.Add(parts[0] + "/" + parts[1]);
+                        continue;
+                    }
+
                     List<ZipArchiveEntry> list;
-                    if (!byDir.TryGetValue(dir, out list))
-                        byDir[dir] = list = new List<ZipArchiveEntry>();
+                    if (!byFolder.TryGetValue(parts[0], out list))
+                        byFolder[parts[0]] = list = new List<ZipArchiveEntry>();
                     list.Add(entry);
                 }
 
-                foreach (var kv in byDir)
-                {
-                    if (!kv.Value.Any(e => ShieldPack.IsPackFile(e.Name)))
-                        continue; // e.g. a readme folder
+                if (ignoredRootFiles.Count > 0)
+                    Jotunn.Logger.LogWarning($"[ShieldShare] '{zipName}': files at the top of the zip are ignored ({string.Join(", ", ignoredRootFiles.Take(5))}" +
+                                             $"{(ignoredRootFiles.Count > 5 ? ", ..." : "")}). Put them in a folder named after the shield.");
+                foreach (var nested in ignoredNested)
+                    Jotunn.Logger.LogWarning($"[ShieldShare] '{zipName}': '{nested}/' is ignored - shield folders must sit directly inside the zip, not inside another folder.");
 
-                    string rawName = kv.Key.Length == 0 ? zipStem : kv.Key.Substring(kv.Key.LastIndexOf('/') + 1);
-                    string name = SafeFolderName(rawName);
-                    if (!produced.Add(name))
+                foreach (var kv in byFolder)
+                {
+                    string folderName = kv.Key;
+
+                    if (!kv.Value.Any(e => ShieldPack.IsJson(FileNameOf(e))))
                     {
-                        Jotunn.Logger.LogWarning($"[ShieldShare] Two shields are called '{name}' - skipping the copy inside '{Path.GetFileName(zipPath)}'. Rename one of them.");
+                        Jotunn.Logger.LogWarning($"[ShieldShare] '{zipName}': '{folderName}/' is skipped - it has no {ShieldPack.JsonFileName}.");
                         continue;
                     }
 
-                    string target = PrepareTarget(shieldsFolder, name, "zip:" + Path.GetFileName(zipPath));
-                    foreach (var entry in kv.Value)
+                    string name = SafeFolderName(folderName);
+                    if (name != folderName)
+                        Jotunn.Logger.LogInfo($"[ShieldShare] '{zipName}': '{folderName}' is used as '{name}' (only letters, digits, '-' and '_' are kept).");
+                    if (!produced.Add(name))
                     {
-                        string fileName = entry.FullName.Replace('\\', '/');
-                        fileName = fileName.Substring(fileName.LastIndexOf('/') + 1);
-                        entry.ExtractToFile(Path.Combine(target, fileName), true);
+                        Jotunn.Logger.LogWarning($"[ShieldShare] Two shields are called '{name}' - skipping the one in '{zipName}'. Shield folder names must be unique.");
+                        continue;
                     }
+
+                    string target = PrepareTarget(shieldsFolder, name, zipName);
+                    foreach (var entry in kv.Value)
+                        entry.ExtractToFile(Path.Combine(target, FileNameOf(entry)), true);
                     count++;
                 }
             }
             return count;
         }
 
-        /// <summary>Folders in the drop folder (searched a few levels deep) that directly contain shield files.</summary>
-        private static IEnumerable<string> FindPackFolders(string dir, int depth)
+        private static string FileNameOf(ZipArchiveEntry entry)
         {
-            if (depth >= MaxFolderDepth)
-                yield break;
-
-            foreach (var sub in Directory.GetDirectories(dir).OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
-            {
-                string name = Path.GetFileName(sub);
-                if (name.StartsWith(".") || name.StartsWith("_") || string.Equals(name, "__MACOSX", StringComparison.OrdinalIgnoreCase))
-                    continue; // _Templates and other helper folders
-
-                if (Directory.GetFiles(sub).Any(f => ShieldPack.IsPackFile(Path.GetFileName(f))))
-                    yield return sub;
-
-                foreach (var nested in FindPackFolders(sub, depth + 1))
-                    yield return nested;
-            }
+            string full = entry.FullName.Replace('\\', '/');
+            return full.Substring(full.LastIndexOf('/') + 1);
         }
 
         private static string PrepareTarget(string shieldsFolder, string name, string source)
@@ -177,7 +173,7 @@ namespace ShieldShare
             return target;
         }
 
-        /// <summary>Folder names become prefab names, so keep them to letters, digits, '_' and '-'.</summary>
+        /// <summary>Folder names become prefab names (the shield's ID), so keep them to letters, digits, '_' and '-'.</summary>
         public static string SafeFolderName(string name)
         {
             var chars = name.Trim().Select(c => char.IsLetterOrDigit(c) || c == '_' || c == '-' ? c : '_').ToArray();

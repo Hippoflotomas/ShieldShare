@@ -9,10 +9,10 @@ Player/author-facing documentation is in [`ShieldShare/README.md`](ShieldShare/R
 | File | Job |
 |---|---|
 | `ShieldShare.cs` | Plugin entry point. On `PrefabManager.OnVanillaPrefabsAvailable` it syncs packs, clones the base shield for each pack, applies optional texture layers, builds the styles and registers the item with Jötunn. Also writes the author templates. |
-| `ShieldPackSync.cs` | Copies packs from the drop folder (zips in any layout, or plain folders) into `BepInEx\config\ShieldShare\Shields`. Folders it creates carry a `.shieldshare-source` marker; only marked folders are ever removed. |
-| `ShieldPack.cs` | Reads one pack folder: finds files case-insensitively, reads the optional `shield.json`, fills in defaults. |
+| `ShieldPackSync.cs` | Copies packs from the drop folder into `BepInEx\config\ShieldShare\Shields`. Fixed layout, like BannerShare: zips only, one folder per shield directly inside the zip, `shield.json` required; anything else is ignored with a warning. Folders it creates carry a `.shieldshare-source` marker; only marked folders are ever removed. |
+| `ShieldPack.cs` | Reads one shield folder: fixed names (`shield.json`, `PatternN.png`, `IconN.png`, case-insensitive), fills in defaults for fields missing from `shield.json`. |
 | `StyleBaker.cs` | Pure math, no Unity textures: works out the shield's face triangles and bakes flat pattern images into the mesh's own UV layout. |
-| `TextureIO.cs` | PNG/JPG loading (linear for data maps such as normal maps), saving, sprites. |
+| `TextureIO.cs` | Image loading via Jötunn (linear for data maps such as normal maps), saving, sprites. |
 
 ### Why patterns are baked, not UV-remapped
 Valheim's `Custom/Creature` shader reads the style atlas (`_StyleTex`, a 4x4 grid, style 0 bottom-left) through

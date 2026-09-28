@@ -15,8 +15,8 @@ namespace ShieldShare
     }
 
     /// <summary>
-    ///     Contents of shield.json. EVERY field is optional - a pack with no shield.json at all still loads.
-    ///     Property names are matched case-insensitively ("displayName" and "DisplayName" both work).
+    ///     Contents of shield.json. The FILE is required (a folder without it is skipped), but every field
+    ///     in it has a default. Property names are matched case-insensitively ("displayName" = "DisplayName").
     /// </summary>
     public class ShieldDefinition
     {
@@ -32,8 +32,13 @@ namespace ShieldShare
     }
 
     /// <summary>
-    ///     One shield pack folder on disk, with its files found case-insensitively and its
-    ///     shield.json filled in with friendly defaults.
+    ///     One shield folder on disk. Layout (same idea as BannerShare):
+    ///       ShieldID/
+    ///         shield.json      required
+    ///         Pattern1.png     one per style, numbered from 1 (Pattern2.png, ...)
+    ///         Icon1.png        optional, per style - generated from the pattern if missing
+    ///         MainTex.png ...  optional texture layers
+    ///     File names are fixed but not case-sensitive. PNG only.
     /// </summary>
     internal sealed class ShieldPack
     {
@@ -41,11 +46,12 @@ namespace ShieldShare
         public const string DefaultBasePrefab = "ShieldWood";
         public const string DefaultCraftingStation = "piece_workbench";
 
-        public static readonly string[] ImageExtensions = { ".png", ".jpg", ".jpeg" };
+        public const string JsonFileName = "shield.json";
+        public const string ImageExtension = ".png";
 
-        // "Pattern1", "pattern_2", "Pattern 3", "Style4", "pattern" (= 1)
-        private static readonly Regex PatternName = new Regex(@"^(pattern|style)[\s_\-]*(\d*)$", RegexOptions.IgnoreCase);
-        private static readonly Regex IconName = new Regex(@"^icon[\s_\-]*(\d*)$", RegexOptions.IgnoreCase);
+        // Pattern1 ... Pattern16 / Icon1 ... Icon16 (any capitalisation)
+        private static readonly Regex PatternName = new Regex(@"^pattern(\d+)$", RegexOptions.IgnoreCase);
+        private static readonly Regex IconName = new Regex(@"^icon(\d+)$", RegexOptions.IgnoreCase);
 
         private static readonly Dictionary<string, string> StationAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -67,14 +73,17 @@ namespace ShieldShare
         public string Name { get; private set; }
         public string Folder { get; private set; }
         public ShieldDefinition Definition { get; private set; }
-        /// <summary>Set when shield.json exists but could not be read. The shield still loads with defaults.</summary>
-        public string JsonError { get; private set; }
+        /// <summary>
+        ///     Why this folder can't be loaded (no shield.json, or it can't be read), or null if it's fine.
+        ///     Folders with a problem are skipped.
+        /// </summary>
+        public string Problem { get; private set; }
 
         /// <summary>Pattern image paths in style order (style 0 = lowest number).</summary>
         public List<string> PatternPaths { get; } = new List<string>();
         /// <summary>Icon path per style, or null where the icon should be generated from the pattern.</summary>
         public List<string> IconPaths { get; } = new List<string>();
-        /// <summary>Icon for a shield with no patterns ("Icon.png" / "Icon1.png"), or null.</summary>
+        /// <summary>Icon for a shield with no patterns (Icon1.png), or null.</summary>
         public string SingleIconPath { get; private set; }
         public List<string> Warnings { get; } = new List<string>();
 
@@ -87,20 +96,10 @@ namespace ShieldShare
         }
 
         public static bool IsImage(string path) =>
-            ImageExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+            string.Equals(Path.GetExtension(path), ImageExtension, StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>Does this file name look like part of a shield pack? Used to spot pack folders.</summary>
-        public static bool IsPackFile(string fileName)
-        {
-            if (string.Equals(fileName, "shield.json", StringComparison.OrdinalIgnoreCase))
-                return true;
-            if (!IsImage(fileName))
-                return false;
-            string stem = Path.GetFileNameWithoutExtension(fileName);
-            return PatternName.IsMatch(stem) || IconName.IsMatch(stem)
-                   || string.Equals(stem, "StyleTex", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(stem, "MainTex", StringComparison.OrdinalIgnoreCase);
-        }
+        public static bool IsJson(string fileName) =>
+            string.Equals(fileName, JsonFileName, StringComparison.OrdinalIgnoreCase);
 
         public static ShieldPack Load(string folder)
         {
@@ -110,7 +109,7 @@ namespace ShieldShare
             foreach (var file in Directory.GetFiles(folder))
             {
                 string fileName = Path.GetFileName(file);
-                if (string.Equals(fileName, "shield.json", StringComparison.OrdinalIgnoreCase))
+                if (IsJson(fileName))
                     jsonPath = file;
                 else if (IsImage(file))
                 {
@@ -120,9 +119,23 @@ namespace ShieldShare
                     else
                         pack.imagesByStem[stem] = file;
                 }
+                else if (Path.GetExtension(file).Length > 0 && !fileName.StartsWith(".")
+                         && !string.Equals(Path.GetExtension(file), ".txt", StringComparison.OrdinalIgnoreCase)
+                         && !string.Equals(Path.GetExtension(file), ".md", StringComparison.OrdinalIgnoreCase))
+                {
+                    pack.Warnings.Add($"'{fileName}' is ignored - images must be .png.");
+                }
+            }
+
+            if (jsonPath == null)
+            {
+                pack.Problem = $"no {JsonFileName} in the folder";
+                return pack;
             }
 
             pack.Definition = ReadDefinition(jsonPath, pack);
+            if (pack.Problem != null)
+                return pack;
             pack.ApplyDefaults();
             pack.CollectStyles();
             return pack;
@@ -130,17 +143,14 @@ namespace ShieldShare
 
         private static ShieldDefinition ReadDefinition(string jsonPath, ShieldPack pack)
         {
-            if (jsonPath == null)
-                return new ShieldDefinition();
-
             try
             {
                 return JsonConvert.DeserializeObject<ShieldDefinition>(File.ReadAllText(jsonPath)) ?? new ShieldDefinition();
             }
             catch (Exception ex)
             {
-                pack.JsonError = ex.Message;
-                return new ShieldDefinition();
+                pack.Problem = $"{JsonFileName} can't be read: {ex.Message}";
+                return null;
             }
         }
 
@@ -151,8 +161,6 @@ namespace ShieldShare
                 d.DisplayName = Name.Replace('_', ' ').Replace('-', ' ');
             if (d.Description == null)
                 d.Description = "";
-            if (JsonError != null)
-                d.Description = "(shield.json has an error - check the BepInEx log) " + d.Description;
             if (string.IsNullOrWhiteSpace(d.BasePrefab))
                 d.BasePrefab = DefaultBasePrefab;
 
@@ -187,7 +195,7 @@ namespace ShieldShare
                 var m = PatternName.Match(kv.Key);
                 if (m.Success)
                 {
-                    int n = m.Groups[2].Value.Length == 0 ? 1 : int.Parse(m.Groups[2].Value);
+                    int n = int.Parse(m.Groups[1].Value);
                     if (patternsByNumber.ContainsKey(n))
                         Warnings.Add($"Two pattern files for style {n} ('{Path.GetFileName(patternsByNumber[n])}' and '{Path.GetFileName(kv.Value)}') - using the first.");
                     else
@@ -198,7 +206,7 @@ namespace ShieldShare
                 m = IconName.Match(kv.Key);
                 if (m.Success)
                 {
-                    int n = m.Groups[1].Value.Length == 0 ? 1 : int.Parse(m.Groups[1].Value);
+                    int n = int.Parse(m.Groups[1].Value);
                     if (!iconsByNumber.ContainsKey(n))
                         iconsByNumber[n] = kv.Value;
                 }
