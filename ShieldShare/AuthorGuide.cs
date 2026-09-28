@@ -46,8 +46,10 @@ THE ARTWORK (PatternN.png)
 - Each Pattern image is a straight-on picture of the shield's FACE. The whole image is
   stretched over the face; anything outside the face outline is not shown.
 - Only the face is painted. The rim, strap and back always stay plain wood.
-- Open  _Templates\ShieldWood - pattern guide.png  and paint over it: the grey area is the
-  face, at the correct proportions. Use it as a bottom layer in your paint program.
+- Open  _Templates\ShieldWood - pattern guide.png  (or the guide for your base shield) and paint
+  over it: the grey area is the face, at the correct proportions. Use it as a bottom layer in your
+  paint program. On metal shields the dark striped areas are metal - the game never paints those,
+  so anything you put there won't show.
 - Transparent parts of your image show the plain wood underneath. Solid parts cover it.
   If you want wood around your design, make that area FULLY transparent (alpha 0).
 - Size: 512 x 512 is ideal; 256 to 1024 is fine.
@@ -96,12 +98,19 @@ log says exactly what's wrong.
 
 ADVANCED (optional)
 -------------------
-- MainTex.png / BumpMap.png / MetallicGlossMap.png / EmissionMap.png replace the base wood
-  textures for the WHOLE shield. These follow the model's own UV layout - see
+- MainTex.png / BumpMap.png / MetallicGlossMap.png / EmissionMap.png replace the base
+  textures of the WHOLE shield (face, rim, strap and back - every style). These follow the model's own UV layout - see
   _Templates\ShieldWood - UV layout.png (orange = face, grey = rim, strap and back).
 - StyleTex.png replaces the automatically built style sheet: a 4 x 4 grid, style 1 in the
   bottom-left cell, going left to right then upwards, each cell following the UV layout.
   You still need the PatternN files so the mod knows how many styles there are.
+
+
+REMOVING A PACK
+---------------
+Shields from a pack that's been removed don't vanish from players' inventories - they turn into
+magenta and black ""missing"" shields. Put the zip back and they return to normal.
+(The list of shields the mod has seen is kept in BepInEx\config\ShieldShare\known-shields.json.)
 
 
 WHERE THINGS GO

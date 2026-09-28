@@ -79,7 +79,7 @@ namespace ShieldShare
         /// </summary>
         public string Problem { get; private set; }
 
-        /// <summary>Pattern image paths in style order (style 0 = lowest number).</summary>
+        /// <summary>Pattern image paths in style order (style 0 = lowest number). A null path means "use the built-in fallback pattern".</summary>
         public List<string> PatternPaths { get; } = new List<string>();
         /// <summary>Icon path per style, or null where the icon should be generated from the pattern.</summary>
         public List<string> IconPaths { get; } = new List<string>();
@@ -100,6 +100,22 @@ namespace ShieldShare
 
         public static bool IsJson(string fileName) =>
             string.Equals(fileName, JsonFileName, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        ///     A shield with no folder on disk: the built-in "missing" shields and stand-ins for removed packs.
+        ///     Every style uses the built-in fallback pattern for its base (pattern paths are null).
+        /// </summary>
+        public static ShieldPack CreateBuiltIn(string name, ShieldDefinition definition, int styles)
+        {
+            var pack = new ShieldPack { Name = name, Folder = null, Definition = definition };
+            pack.ApplyDefaults();
+            for (int i = 0; i < Math.Max(1, Math.Min(styles, MaxStyles)); i++)
+            {
+                pack.PatternPaths.Add(null);
+                pack.IconPaths.Add(null);
+            }
+            return pack;
+        }
 
         public static ShieldPack Load(string folder)
         {

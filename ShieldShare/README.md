@@ -24,6 +24,8 @@ MyShields.zip
 
 Files at the top of the zip, folders nested inside other folders, and folders without `shield.json` are ignored.
 Your artwork is painted onto the shield's face only; the rim, strap and back stay plain wood.
+If you remove a pack, shields from it turn into magenta "missing" shields instead of disappearing from
+inventories; put the zip back to restore them.
 The game writes a full guide, `HOW TO MAKE A SHIELD.txt`, and a face-outline template to paint over
 (`_Templates\ShieldWood - pattern guide.png`) into the drop folder.
 
@@ -31,5 +33,7 @@ The game writes a full guide, `HOW TO MAKE A SHIELD.txt`, and a face-outline tem
 - 0.0.2 - Patterns are baked into the shield's own texture layout, so they no longer bleed onto the
   rim, strap and back. Icons generated automatically. Fixed pack layout (a folder per shield inside the zip,
   shield.json required) with clear log messages when a pack is laid out wrong. Author guide and templates
-  written to the drop folder.
+  written to the drop folder. All nine customisable vanilla shields supported (metal shields are painted only
+  where the game's own styles paint). Built-in "missing" patterns; removed packs leave stand-ins behind.
+  Plugin GUID is now com.hippotech.shieldshare.
 - 0.0.1 - First test build.

@@ -25,14 +25,22 @@ namespace ShieldShare
             if (string.IsNullOrEmpty(path) || !File.Exists(path))
                 return null;
 
+            var tex = LoadBytes(File.ReadAllBytes(path), Path.GetFileNameWithoutExtension(path), linear, mipmaps);
+            if (tex == null)
+                Jotunn.Logger.LogWarning($"[ShieldShare] '{path}' is not a readable PNG image.");
+            return tex;
+        }
+
+        /// <summary>Decodes PNG/JPG bytes into a readable texture, or null if they aren't an image.</summary>
+        public static Texture2D LoadBytes(byte[] data, string name, bool linear = false, bool mipmaps = true)
+        {
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, mipmaps, linear);
-            if (!AssetUtils.LoadImage(tex, File.ReadAllBytes(path)))
+            if (data == null || !AssetUtils.LoadImage(tex, data))
             {
                 UnityEngine.Object.Destroy(tex);
-                Jotunn.Logger.LogWarning($"[ShieldShare] '{path}' is not a readable PNG/JPG image.");
                 return null;
             }
-            tex.name = Path.GetFileNameWithoutExtension(path);
+            tex.name = name;
             return tex;
         }
 

@@ -13,6 +13,8 @@ Player/author-facing documentation is in [`ShieldShare/README.md`](ShieldShare/R
 | `ShieldPack.cs` | Reads one shield folder: fixed names (`shield.json`, `PatternN.png`, `IconN.png`, case-insensitive), fills in defaults for fields missing from `shield.json`. |
 | `StyleBaker.cs` | Pure math, no Unity textures: works out the shield's face triangles and bakes flat pattern images into the mesh's own UV layout. |
 | `MeshReader.cs` | Reads vertices/normals/UVs/triangles from a mesh. Meshes the game ships without a CPU copy (`isReadable == false`: blackmetal, flametal, iron tower...) are copied back from the GPU vertex/index buffers and decoded. |
+| `FallbackPatterns.cs` | The magenta/black "missing" patterns from `Assets/*.png`, embedded in the DLL (`EmbeddedResource` in the .csproj; name before ` - ` = base prefab). Used for the built-in `ShieldShare_Missing_<Base>` shields (hidden unless `ShowMissingShields` is on), for pattern images that fail to load, and for stand-ins. |
+| `KnownShields.cs` | `known-shields.json`: every pack shield ever registered (base, name, highest style count). Shields whose pack is gone are registered as magenta stand-ins so the game doesn't delete players' copies. |
 | `TextureIO.cs` | Image loading via Jötunn (linear for data maps such as normal maps), saving, sprites. |
 
 ### Why patterns are baked, not UV-remapped

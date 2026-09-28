@@ -1,4 +1,5 @@
 using BepInEx;
+using BepInEx.Configuration;
 using Jotunn.Configs;
 using Jotunn.Entities;
 using Jotunn.Managers;
@@ -16,11 +17,13 @@ namespace ShieldShare
     [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
     internal class ShieldShare : BaseUnityPlugin
     {
-        public const string PluginGUID = "com.jotunn.ShieldShare";
+        public const string PluginGUID = "com.hippotech.shieldshare";
         public const string PluginName = "ShieldShare";
         public const string PluginVersion = "0.0.2";
         private const string ItemPrefabPrefix = "ShieldShare_";
         private const string DropFolderName = "Valheim Custom Shields";
+        private const string BuiltInPrefix = "Missing_";            // ShieldShare_Missing_ShieldWood, ...
+        private const string ReservedFolderName = "Missing";       // the old hand-made test shield
 
         // Use this class to add your own localization to the game
         // https://valheim-modding.github.io/Jotunn/tutorials/localization.html
@@ -47,10 +50,15 @@ namespace ShieldShare
         /// <summary>Mesh analysis per base prefab name - every pack on the same base shares it.</summary>
         private readonly Dictionary<string, FrontProjection> projections = new Dictionary<string, FrontProjection>(StringComparer.OrdinalIgnoreCase);
 
+        private ConfigEntry<bool> showMissingShields;
+
         private void Awake()
         {
             // Jotunn comes with its own Logger class to provide a consistent Log style for all mods using it
             Jotunn.Logger.LogInfo("ShieldShare has landed");
+            showMissingShields = Config.Bind("Testing", "ShowMissingShields", false,
+                "Make the built-in magenta 'missing' shields (one per vanilla shield) craftable at the workbench. " +
+                "For testing only; normally they are hidden.");
             PrefabManager.OnVanillaPrefabsAvailable += LoadAndRegisterShields;
         }
 
@@ -89,48 +97,126 @@ namespace ShieldShare
                 Jotunn.Logger.LogError($"[ShieldShare] Syncing from '{dropFolder}' failed: {ex}");
             }
 
+            // 1. Built-in "missing" shields, one per vanilla shield (magenta/black, baked into the DLL).
+            RegisterBuiltInShields();
+
+            // 2. Shield packs.
+            var known = new KnownShields(Path.Combine(Path.GetDirectoryName(shieldsFolder), "known-shields.json"));
+            known.Load();
+            var registered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             var shieldFolders = Directory.GetDirectories(shieldsFolder).OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToArray();
             Jotunn.Logger.LogInfo($"[ShieldShare] Found {shieldFolders.Length} shield folder(s) in {shieldsFolder}");
 
             foreach (var folder in shieldFolders)
             {
+                string name = Path.GetFileName(folder);
+                if (string.Equals(name, ReservedFolderName, StringComparison.OrdinalIgnoreCase))
+                {
+                    Jotunn.Logger.LogInfo($"[ShieldShare] The '{name}' folder in {shieldsFolder} is no longer used - the 'missing' shields are built in now. You can delete it.");
+                    continue;
+                }
                 try
                 {
-                    RegisterShield(ShieldPack.Load(folder));
+                    var pack = ShieldPack.Load(folder);
+                    int styles = RegisterShield(pack);
+                    if (styles >= 0)
+                    {
+                        string id = ShieldPackSync.SafeFolderName(pack.Name);
+                        registered.Add(id);
+                        known.Remember(id, pack.Definition.BasePrefab, pack.Definition.DisplayName, styles);
+                    }
                 }
                 catch (Exception ex)
                 {
                     // One broken pack must never stop the others from loading.
-                    Jotunn.Logger.LogError($"[ShieldShare] Shield '{Path.GetFileName(folder)}' failed to load: {ex}");
+                    Jotunn.Logger.LogError($"[ShieldShare] Shield '{name}' failed to load: {ex}");
                 }
             }
+
+            // 3. Stand-ins for shields whose pack has been removed, so players don't lose them.
+            RegisterStandIns(known, registered);
+            known.Save();
 
             TryWriteTemplates(dropFolder);
         }
 
-        private void RegisterShield(ShieldPack pack)
+        private void RegisterBuiltInShields()
+        {
+            bool visible = showMissingShields.Value;
+            foreach (var baseName in FallbackPatterns.Bases)
+            {
+                var def = new ShieldDefinition
+                {
+                    DisplayName = "Missing shield (" + baseName + ")",
+                    Description = "ShieldShare's built-in fallback pattern.",
+                    BasePrefab = baseName,
+                    Hidden = !visible,
+                    Requirements = new List<ShieldRequirement> { new ShieldRequirement { Item = "Wood", Amount = 1 } },
+                };
+                try
+                {
+                    RegisterShield(ShieldPack.CreateBuiltIn(BuiltInPrefix + baseName, def, 1));
+                }
+                catch (Exception ex)
+                {
+                    Jotunn.Logger.LogError($"[ShieldShare] Built-in missing shield for '{baseName}' failed: {ex}");
+                }
+            }
+        }
+
+        private void RegisterStandIns(KnownShields known, HashSet<string> registered)
+        {
+            foreach (var kv in known.All.ToArray())
+            {
+                if (registered.Contains(kv.Key))
+                    continue;
+                var entry = kv.Value;
+                var def = new ShieldDefinition
+                {
+                    DisplayName = (string.IsNullOrWhiteSpace(entry.DisplayName) ? kv.Key : entry.DisplayName) + " (missing)",
+                    Description = $"The shield pack for this shield ('{kv.Key}') is no longer installed. " +
+                                  "Put its zip back in 'Valheim Custom Shields' to restore it.",
+                    BasePrefab = string.IsNullOrWhiteSpace(entry.BasePrefab) ? ShieldPack.DefaultBasePrefab : entry.BasePrefab,
+                    Hidden = true,
+                    Requirements = new List<ShieldRequirement> { new ShieldRequirement { Item = "Wood", Amount = 1 } },
+                };
+                try
+                {
+                    if (RegisterShield(ShieldPack.CreateBuiltIn(kv.Key, def, entry.Styles)) >= 0)
+                        Jotunn.Logger.LogWarning($"[ShieldShare] '{kv.Key}' is no longer installed - registered a magenta stand-in so existing copies aren't deleted.");
+                }
+                catch (Exception ex)
+                {
+                    Jotunn.Logger.LogError($"[ShieldShare] Stand-in for '{kv.Key}' failed: {ex}");
+                }
+            }
+        }
+
+        /// <summary>Registers one shield. Returns its number of styles (0 if none), or -1 if it wasn't registered.</summary>
+        private int RegisterShield(ShieldPack pack)
         {
             foreach (var warning in pack.Warnings)
                 Jotunn.Logger.LogWarning($"[ShieldShare] '{pack.Name}': {warning}");
             if (pack.Problem != null)
             {
                 Jotunn.Logger.LogError($"[ShieldShare] Skipping '{pack.Name}': {pack.Problem}.");
-                return;
+                return -1;
             }
             var def = pack.Definition;
 
             string prefabName = ItemPrefabPrefix + ShieldPackSync.SafeFolderName(pack.Name);
             if (PrefabManager.Instance.GetPrefab(prefabName) != null)
             {
-                Jotunn.Logger.LogWarning($"[ShieldShare] A shield called '{prefabName}' is already registered - skipping '{pack.Folder}'.");
-                return;
+                Jotunn.Logger.LogWarning($"[ShieldShare] A shield called '{prefabName}' is already registered - skipping '{pack.Folder ?? pack.Name}'.");
+                return -1;
             }
 
             var shieldPrefab = PrefabManager.Instance.CreateClonedPrefab(prefabName, def.BasePrefab);
             if (shieldPrefab == null)
             {
                 Jotunn.Logger.LogError($"[ShieldShare] '{pack.Name}': there is no vanilla item called '{def.BasePrefab}' (check \"basePrefab\" in shield.json).");
-                return;
+                return -1;
             }
 
             var itemDrop = shieldPrefab.GetComponent<ItemDrop>();
@@ -138,7 +224,7 @@ namespace ShieldShare
             {
                 Jotunn.Logger.LogError($"[ShieldShare] '{pack.Name}': '{def.BasePrefab}' is not an item, so it can't be used as a shield base.");
                 UnityEngine.Object.Destroy(shieldPrefab);
-                return;
+                return -1;
             }
 
             // The clone still shares the vanilla materials. Copy them before changing anything, or we'd
@@ -191,8 +277,10 @@ namespace ShieldShare
             if (styleTex != null && icons != null)
                 shared.m_variants = icons.Length; // Jötunn's FixVariants sets this too, later; set it now for consistency
 
+            int styleCount = styleTex != null ? icons.Length : 0;
             Jotunn.Logger.LogInfo($"[ShieldShare] Registered '{def.DisplayName}' from '{pack.Name}' " +
-                                  $"(base {def.BasePrefab}, {(styleTex != null ? icons.Length : 0)} style(s)).");
+                                  $"(base {def.BasePrefab}, {styleCount} style(s){(def.Hidden ? ", not craftable" : "")}).");
+            return styleCount;
         }
 
         // ------------------------------------------------------------------------------------------
@@ -228,9 +316,11 @@ namespace ShieldShare
                 var pattern = TextureIO.Load(pack.PatternPaths[i], mipmaps: false);
                 if (pattern == null)
                 {
-                    Jotunn.Logger.LogWarning($"[ShieldShare] '{pack.Name}': '{Path.GetFileName(pack.PatternPaths[i])}' could not be loaded - style {i + 1} will be blank.");
-                    iconList[i] = LoadOrNull(pack.IconPaths[i]);
-                    continue;
+                    // Built-in shields have no pattern files at all; for packs this means a broken image.
+                    if (pack.PatternPaths[i] != null)
+                        Jotunn.Logger.LogWarning($"[ShieldShare] '{pack.Name}': '{Path.GetFileName(pack.PatternPaths[i])}' could not be loaded - " +
+                                                 $"style {i + 1} uses the built-in 'missing' pattern instead.");
+                    pattern = FallbackPatterns.Load(baseName);
                 }
 
                 var patternPixels = pattern.GetPixels32();
@@ -630,6 +720,9 @@ namespace ShieldShare
         private static void ApplyTextureLayers(ShieldPack pack, GameObject prefab)
         {
             var renderers = ModelRenderers(prefab).ToArray();
+            // Only the styled material(s) - the part shown in the UV layout template. Other parts of a
+            // multi-material shield (e.g. separate metal pieces) use a different texture layout.
+            bool anyStyled = renderers.Any(r => r.sharedMaterials.Any(m => m != null && m.HasProperty("_StyleTex")));
             foreach (var layer in LayerFileToShaderProperty)
             {
                 string path = pack.FindImage(layer.Key);
@@ -645,7 +738,7 @@ namespace ShieldShare
                 {
                     foreach (var mat in rend.sharedMaterials)
                     {
-                        if (mat != null && mat.HasProperty(layer.Value))
+                        if (mat != null && mat.HasProperty(layer.Value) && (!anyStyled || mat.HasProperty("_StyleTex")))
                         {
                             mat.SetTexture(layer.Value, texture);
                             applied++;
@@ -695,7 +788,8 @@ namespace ShieldShare
                 {
                     if (kv.Value == null || kv.Value.Front.Count == 0)
                         continue;
-                    WritePatternGuide(kv.Value, Path.Combine(folder, kv.Key + " - pattern guide.png"));
+                    WritePatternGuide(kv.Value, GetVanillaPaintMask(kv.Key, GuideMaskAtlasSize), GuideMaskAtlasSize / 4,
+                        Path.Combine(folder, kv.Key + " - pattern guide.png"));
                     WriteUvLayout(kv.Value, Path.Combine(folder, kv.Key + " - UV layout.png"));
                 }
             }
@@ -705,17 +799,39 @@ namespace ShieldShare
             }
         }
 
-        /// <summary>The face outline at the right proportions - paint your pattern over this.</summary>
-        private static void WritePatternGuide(FrontProjection projection, string path)
+        private const int GuideMaskAtlasSize = 2048;
+
+        /// <summary>
+        ///     The face outline at the right proportions - paint your pattern over this. On shields masked to the
+        ///     vanilla paint area, the parts that will NOT be painted (metal) are dark and striped.
+        /// </summary>
+        private static void WritePatternGuide(FrontProjection projection, byte[] paintMask, int maskSize, string path)
         {
             const int width = 512;
             int height = Mathf.Clamp(Mathf.RoundToInt(width / Mathf.Max(projection.AspectRatio, 0.01f)), 64, 2048);
+            var paintable = new Color32(205, 205, 205, 255);
+            var metalA = new Color32(70, 70, 76, 255);
+            var metalB = new Color32(95, 95, 102, 255);
 
             var px = new Color32[width * height];
             foreach (var t in projection.Front)
             {
-                StyleBaker.RasterizeTriangle(t.PA, t.PB, t.PC, width, height, 0.5f,
-                    (x, y, wa, wb, wc) => px[y * width + x] = new Color32(205, 205, 205, 255));
+                var tri = t;
+                StyleBaker.RasterizeTriangle(tri.PA, tri.PB, tri.PC, width, height, 0.5f, (x, y, wa, wb, wc) =>
+                {
+                    var c = paintable;
+                    if (paintMask != null)
+                    {
+                        // Where does this point of the face sit in the texture, and do the vanilla styles paint it?
+                        var uv = tri.UvA * wa + tri.UvB * wb + tri.UvC * wc;
+                        int mx = Mathf.Clamp((int)(uv.x * maskSize), 0, maskSize - 1);
+                        int my = Mathf.Clamp((int)(uv.y * maskSize), 0, maskSize - 1);
+                        float f = Mathf.Clamp01((paintMask[my * maskSize + mx] - StyleBaker.MaskLow) / (float)(StyleBaker.MaskHigh - StyleBaker.MaskLow));
+                        var metal = ((x + y) / 8) % 2 == 0 ? metalA : metalB;
+                        c = Color32.Lerp(metal, paintable, f);
+                    }
+                    px[y * width + x] = c;
+                });
             }
 
             // outline + centre cross so authors can line artwork up

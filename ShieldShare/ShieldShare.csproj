@@ -60,6 +60,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Built-in magenta "missing" patterns, one per vanilla shield. Read by FallbackPatterns.cs. -->
+    <EmbeddedResource Include="..\Assets\*.png">
+      <LogicalName>ShieldShare.Fallback.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="JotunnLib" Version="2.30.2" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
