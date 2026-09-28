@@ -1,4 +1,4 @@
-using HarmonyLib;
+﻿using HarmonyLib;
 using Jotunn.Managers;
 using System;
 using System.Collections.Generic;
@@ -370,10 +370,11 @@ namespace ShieldShare
         ///     ID/base tag to items made before tagging existed.
         /// </summary>
         ///
-        ///     The exact overload differs between game builds (the client and the dedicated server builds have had
-        ///     different parameter lists), so instead of a fixed signature it is found at startup: the AddItem
-        ///     whose first parameter is the int prefab hash and which takes the custom-data dictionary.
-        ///     If a build has no such overload, this one patch is skipped - nothing else is affected.
+        ///     Found at startup instead of by a fixed signature: the AddItem whose first parameter is the int
+        ///     prefab hash and which takes the custom-data dictionary. (1.0.0 used a fixed signature; the package
+        ///     site's static API check flagged it as missing on the dedicated server build, although that build
+        ///     has the identical method - its types reference netstandard where the client's reference mscorlib.)
+        ///     If a future build has no such overload, this one patch is skipped - nothing else is affected.
         [HarmonyPatch]
         private static class Inventory_AddItem_ByHash_Patch
         {

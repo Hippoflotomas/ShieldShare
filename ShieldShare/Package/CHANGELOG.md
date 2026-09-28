@@ -1,5 +1,6 @@
 ## Version 1.0.1
-- Fixed: on game builds where Inventory.AddItem has a different parameter list (flagged for the Valheim dedicated server build), the mod's patches could fail to load. The inventory patch now finds the right method on any build, and every patch loads on its own, so a future game update can only switch off the one feature it breaks - with a warning in the log.
+- The package site's compatibility check flagged 1.0.0 as broken on the Valheim dedicated server. The server's game code turned out to be the same, but the inventory patch now finds its method when the game starts instead of relying on an exact signature.
+- Each patch now loads on its own, so a future game update can only switch off the one feature it breaks, with a warning in the log.
 
 ## Version 1.0.0
 First public release.
