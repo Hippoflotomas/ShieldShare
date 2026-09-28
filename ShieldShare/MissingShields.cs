@@ -341,15 +341,6 @@ namespace ShieldShare
                 EnsureExists(id, baseName, whereSeen);
         }
 
-        // TODO / KNOWN ISSUE (Valheim bug, not ShieldShare):
-        // a shield hung on an ITEM STAND reverts to style 0, whatever style it was made in.
-        // Test 5 (0.0.2, all nine ShieldShare shields on item stands): every shield KEPT its style, so something
-        // in ShieldShare seems to avoid it - but nothing here is meant to, and the cause isn't known.
-        // What we know: ItemStand.SetVisualItem(itemHash, variant, ...) ends by calling
-        // IEquipmentVisual.Setup(m_visualVariant) on the first IEquipmentVisual in the attached object.
-        // Still to check: vanilla shields on item stands with ShieldShare installed. Revisit after the next
-        // Valheim patch.
-        //
         // TODO (later): the orientation of shields on item stands looks a little odd. Not investigated.
 
         /// <summary>Item stands (wall mounts): register the stand-in before the stand looks the shield up.</summary>

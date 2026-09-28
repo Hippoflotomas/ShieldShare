@@ -29,7 +29,7 @@ transparent, so everything but the face shows the plain base texture - the same 
 "Front" is decided per triangle: the average vertex normal must point along the face direction (> 0.5).
 Models differ in which way their outside faces and which way up they are. The `KnownBases` table in
 `ShieldShare.cs` records what in-game testing established for each vanilla shield (face -Z/+Z, flip vertical,
-mask). For shields not in the table, the face is worked out by checking which side's UVs land on painted pixels
+flip horizontal, mask). Test with an asymmetric pattern - a symmetric one hides mirroring. For shields not in the table, the face is worked out by checking which side's UVs land on painted pixels
 in the vanilla style atlas - the vanilla artists only painted the outside. For +Z faces the pattern's U axis is
 mirrored so artwork isn't back to front.
 
@@ -51,9 +51,6 @@ Valheim's own copyrighted assemblies and must not be committed.
 
 ## Known issues
 
-- **Shields on item stands reverting to style 0** is a Valheim bug. In testing, ShieldShare's shields kept
-  their style on item stands; the cause isn't known and nothing in ShieldShare targets it. Still to check:
-  vanilla shields on item stands with ShieldShare installed. See the TODO in `MissingShields.cs`.
 - The orientation of shields on item stands looks a little odd. Not investigated yet.
 - Shields crafted before shield tagging existed can only be identified by players without the pack once a
   player *with* the pack has loaded them (inventory, chest or stand), which adds the tag.
