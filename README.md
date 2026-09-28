@@ -1,7 +1,7 @@
 # ShieldShare
 
 A Valheim mod (BepInEx + [Jötunn](https://github.com/Valheim-Modding/Jotunn)) for easily adding and sharing custom shield styles.
-Player/author-facing documentation is in [`ShieldShare/README.md`](ShieldShare/README.md) and in the
+Player/author-facing documentation is in [`ShieldShare/Package/README.md`](ShieldShare/Package/README.md) (the Thunderstore page) and in the
 `HOW TO MAKE A SHIELD.txt` guide the mod writes into `Documents\Valheim Custom Shields\` (source: `ShieldShare/AuthorGuide.cs`).
 
 ## How it works
@@ -48,6 +48,17 @@ See the [Jötunn docs](https://valheim-modding.github.io/Jotunn/guides/overview.
 
 `JotunnModStubUnity/Assets/Assemblies/*.dll` are copied in by the build and are **gitignored** - they include
 Valheim's own copyrighted assemblies and must not be committed.
+
+## Releasing
+1. Bump `PluginVersion` in `ShieldShare/ShieldShare.cs` and `version_number` in `ShieldShare/Package/manifest.json`
+   to the same version, and add a section to `ShieldShare/Package/CHANGELOG.md`.
+2. Build in **Release**. `scripts/publish.ps1` puts `ShieldShare-<version>.zip` (and an unzipped copy to check) in
+   `publishables/`. The build stops if the two version numbers differ.
+3. Upload the zip to Thunderstore.
+
+The package is `manifest.json`, `icon.png`, `README.md`, `CHANGELOG.md` and `plugins/ShieldShare.dll`. Nothing else is
+shipped: Jötunn and BepInEx come from the manifest's dependencies. Newtonsoft.Json isn't shipped either - it comes
+with the game (a profile with only Jötunn, BannerShare and ShieldShare reads JSON fine, and none of them ship it).
 
 ## Known issues
 

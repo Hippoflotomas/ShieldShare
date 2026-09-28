@@ -1,4 +1,4 @@
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using Jotunn.Configs;
@@ -20,7 +20,7 @@ namespace ShieldShare
     {
         public const string PluginGUID = "com.hippotech.shieldshare";
         public const string PluginName = "ShieldShare";
-        public const string PluginVersion = "0.0.2";
+        public const string PluginVersion = "1.0.0";
         internal const string ItemPrefabPrefix = "ShieldShare_";
         private const string DropFolderName = "Valheim Custom Shields";
         internal const string BuiltInPrefix = "Missing_";            // ShieldShare_Missing_ShieldWood, ...

@@ -37,3 +37,7 @@ Missing/*.jpg
 
 # --- Scratch ---
 _to_delete/
+
+# --- Release packages (built by scripts/publish.ps1) ---
+/publishables/*
+!/publishables/README.md

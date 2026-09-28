@@ -55,15 +55,54 @@ if ($Target.Equals("Debug")) {
 }
 
 if($Target.Equals("Release")) {
-    Write-Host "Packaging for ThunderStore..."
-    $Package="Package"
-    $PackagePath="$ProjectPath\$Package"
+    # Builds a Thunderstore-ready package in <solution>\publishables:
+    #   publishables\<name>\            unzipped, for checking
+    #   publishables\<name>-<ver>.zip   upload this one
+    Write-Host "Packaging for Thunderstore..."
+    $PackageSource = "$ProjectPath\Package"
+    $Publishables = Join-Path (Resolve-Path "$(Get-Location)\..").Path "publishables"
+    $Staging = "$Publishables\$name"
 
-    Write-Host "$PackagePath\$TargetAssembly"
-    New-Item -Type Directory -Path "$PackagePath\plugins" -Force
-    Copy-Item -Path "$TargetPath\$TargetAssembly" -Destination "$PackagePath\plugins\$TargetAssembly" -Force
-    Copy-Item -Path "$ProjectPath\README.md" -Destination "$PackagePath\README.md" -Force
-    Compress-Archive -Path "$PackagePath\*" -DestinationPath "$TargetPath\$name.zip" -Force
+    $manifest = Get-Content "$PackageSource\manifest.json" -Raw | ConvertFrom-Json
+    $version = $manifest.version_number
+
+    # The manifest version and the plugin's own version (PluginVersion in ShieldShare.cs) must agree,
+    # or Thunderstore and the in-game version check will disagree about what's installed.
+    $dllVersion = [System.Reflection.AssemblyName]::GetAssemblyName("$TargetPath\$TargetAssembly").Version
+    $dllVersionText = "$($dllVersion.Major).$($dllVersion.Minor).$($dllVersion.Build)"
+    if ($dllVersionText -ne $version) {
+        Write-Error -ErrorAction Stop -Message "Version mismatch: manifest.json says $version but $TargetAssembly is $dllVersionText. Update PluginVersion in ShieldShare.cs and version_number in Package\manifest.json together."
+    }
+
+    # Fresh staging folder every build so nothing stale gets shipped
+    if (Test-Path $Staging) { Remove-Item $Staging -Recurse -Force }
+    New-Item -Type Directory -Path "$Staging\plugins" -Force | Out-Null
+
+    foreach ($file in "manifest.json", "icon.png", "README.md", "CHANGELOG.md") {
+        if (!(Test-Path "$PackageSource\$file")) { Write-Error -ErrorAction Stop -Message "$PackageSource\$file is missing" }
+        Copy-Item -Path "$PackageSource\$file" -Destination $Staging -Force
+    }
+    Copy-Item -Path "$TargetPath\$TargetAssembly" -Destination "$Staging\plugins\$TargetAssembly" -Force
+
+    # Write every zip entry by name with forward slashes. Windows PowerShell's Compress-Archive AND
+    # ZipFile.CreateFromDirectory both write backslashes into zip paths ("plugins\x.dll"), which breaks
+    # the folder layout for Thunderstore / r2modman.
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = "$Publishables\$name-$version.zip"
+    if (Test-Path $zip) { Remove-Item $zip -Force }
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($file in Get-ChildItem -Path $Staging -Recurse -File) {
+            $entryName = $file.FullName.Substring($Staging.Length + 1).Replace('\', '/')
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $entryName) | Out-Null
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+
+    Write-Host "Thunderstore package ready: $zip"
 }
 
 # Pop Location

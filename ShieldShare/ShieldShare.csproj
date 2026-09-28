@@ -61,7 +61,9 @@
   <ItemGroup>
     <None Include="app.config" />
     <None Include="packages.config" />
-    <None Include="README.md" />
+    <None Include="Package\README.md" />
+    <None Include="Package\CHANGELOG.md" />
+    <None Include="Package\manifest.json" />
   </ItemGroup>
 
   <ItemGroup>
