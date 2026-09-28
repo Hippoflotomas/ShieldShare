@@ -113,6 +113,14 @@ magenta and black ""missing"" shields. Put the zip back and they return to norma
 (The list of shields the mod has seen is kept in BepInEx\config\ShieldShare\known-shields.json.)
 
 
+PLAYING WITH OTHERS
+-------------------
+If another player has a shield from a pack you don't have, you'll see it as a magenta and black
+""missing"" shield - in their hand, on the ground or in a chest - and a message tells you to check
+chat, where each missing shield is listed. Nothing is lost: once you install the pack and restart,
+those shields look normal again. Everyone should use the same packs.
+
+
 WHERE THINGS GO
 ---------------
 - Players and authors use:  Documents\Valheim Custom Shields\   (.zip files only)

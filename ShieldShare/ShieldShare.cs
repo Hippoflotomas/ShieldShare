@@ -1,5 +1,6 @@
 using BepInEx;
 using BepInEx.Configuration;
+using HarmonyLib;
 using Jotunn.Configs;
 using Jotunn.Entities;
 using Jotunn.Managers;
@@ -20,9 +21,9 @@ namespace ShieldShare
         public const string PluginGUID = "com.hippotech.shieldshare";
         public const string PluginName = "ShieldShare";
         public const string PluginVersion = "0.0.2";
-        private const string ItemPrefabPrefix = "ShieldShare_";
+        internal const string ItemPrefabPrefix = "ShieldShare_";
         private const string DropFolderName = "Valheim Custom Shields";
-        private const string BuiltInPrefix = "Missing_";            // ShieldShare_Missing_ShieldWood, ...
+        internal const string BuiltInPrefix = "Missing_";            // ShieldShare_Missing_ShieldWood, ...
         private const string ReservedFolderName = "Missing";       // the old hand-made test shield
 
         // Use this class to add your own localization to the game
@@ -51,6 +52,10 @@ namespace ShieldShare
         private readonly Dictionary<string, FrontProjection> projections = new Dictionary<string, FrontProjection>(StringComparer.OrdinalIgnoreCase);
 
         private ConfigEntry<bool> showMissingShields;
+        private Harmony harmony;
+
+        /// <summary>Built-in and stand-in shields get every style slot, so any saved style number shows magenta.</summary>
+        private const int FallbackStyles = 16;
 
         private void Awake()
         {
@@ -60,6 +65,15 @@ namespace ShieldShare
                 "Make the built-in magenta 'missing' shields (one per vanilla shield) craftable at the workbench. " +
                 "For testing only; normally they are hidden.");
             PrefabManager.OnVanillaPrefabsAvailable += LoadAndRegisterShields;
+
+            // Patches for shields other players have that we don't (see MissingShields.cs).
+            harmony = new Harmony(PluginGUID);
+            harmony.PatchAll();
+        }
+
+        private void Update()
+        {
+            MissingShields.Notices.Update();
         }
 
         private static string GetShieldFolderPath()
@@ -156,7 +170,7 @@ namespace ShieldShare
                 };
                 try
                 {
-                    RegisterShield(ShieldPack.CreateBuiltIn(BuiltInPrefix + baseName, def, 1));
+                    RegisterShield(ShieldPack.CreateBuiltIn(BuiltInPrefix + baseName, def, FallbackStyles));
                 }
                 catch (Exception ex)
                 {
@@ -273,6 +287,15 @@ namespace ShieldShare
 
             ItemManager.Instance.AddItem(new CustomItem(shieldPrefab, false, itemConfig));
 
+            // Tag the item so every copy carries its ID and base (ItemData.Clone copies custom data).
+            // Players without this pack use the tag to show a stand-in instead of losing the shield.
+            string shieldId = ShieldPackSync.SafeFolderName(pack.Name);
+            if (itemDrop.m_itemData.m_customData == null)
+                itemDrop.m_itemData.m_customData = new Dictionary<string, string>();
+            itemDrop.m_itemData.m_customData[MissingShields.ItemIdKey] = shieldId;
+            itemDrop.m_itemData.m_customData[MissingShields.ItemBaseKey] = def.BasePrefab;
+            MissingShields.LocalBases[shieldId] = def.BasePrefab;
+
             var shared = itemDrop.m_itemData.m_shared;
             if (styleTex != null && icons != null)
                 shared.m_variants = icons.Length; // Jötunn's FixVariants sets this too, later; set it now for consistency
@@ -310,9 +333,20 @@ namespace ShieldShare
             int atlasSize = 0;
             byte[] paintMask = null;
             int maskBefore = 0, maskAfter = 0;
+            // Built-in shields repeat one fallback pattern in every cell: bake it once, then copy.
+            int fallbackCell = -1;
+            Sprite fallbackIcon = null;
+            bool builtIn = pack.Folder == null;
 
             for (int i = 0; i < count; i++)
             {
+                if (pack.PatternPaths[i] == null && fallbackCell >= 0 && atlas != null)
+                {
+                    CopyCell(atlas, atlasSize, cellSize, fallbackCell, i);
+                    iconList[i] = pack.IconPaths[i] != null ? LoadOrNull(pack.IconPaths[i]) ?? fallbackIcon : fallbackIcon;
+                    continue;
+                }
+
                 var pattern = TextureIO.Load(pack.PatternPaths[i], mipmaps: false);
                 if (pattern == null)
                 {
@@ -329,7 +363,7 @@ namespace ShieldShare
                 {
                     if (atlas == null)
                     {
-                        cellSize = Mathf.Clamp(Mathf.NextPowerOfTwo(Mathf.Max(pattern.width, pattern.height)), MinCellSize, MaxCellSize);
+                        cellSize = Mathf.Clamp(Mathf.NextPowerOfTwo(Mathf.Max(pattern.width, pattern.height)), MinCellSize, builtIn ? MinCellSize : MaxCellSize);
                         atlasSize = cellSize * 4;
                         atlas = new Color32[atlasSize * atlasSize]; // all transparent
                         paintMask = GetVanillaPaintMask(baseName, atlasSize);
@@ -352,6 +386,12 @@ namespace ShieldShare
                     if (iconMask == null)
                         iconMask = StyleBaker.FrontMask(projection, IconSize);
                     iconList[i] = MakeIcon(patternPixels, pattern.width, pattern.height, iconMask);
+                }
+
+                if (pack.PatternPaths[i] == null && fallbackCell < 0 && handBuilt == null)
+                {
+                    fallbackCell = i;
+                    fallbackIcon = iconList[i];
                 }
 
                 UnityEngine.Object.Destroy(pattern);
@@ -392,6 +432,14 @@ namespace ShieldShare
             tex.Compress(true);        // RGBA32 2048x2048 is 16 MB; DXT5 is 4 MB
             tex.Apply(false, true);    // drop the CPU copy - nothing reads it back
             return tex;
+        }
+
+        private static void CopyCell(Color32[] atlas, int atlasSize, int cellSize, int from, int to)
+        {
+            int fx = (from % 4) * cellSize, fy = (from / 4) * cellSize;
+            int tx = (to % 4) * cellSize, ty = (to / 4) * cellSize;
+            for (int y = 0; y < cellSize; y++)
+                Array.Copy(atlas, (fy + y) * atlasSize + fx, atlas, (ty + y) * atlasSize + tx, cellSize);
         }
 
         private static Sprite LoadOrNull(string path)

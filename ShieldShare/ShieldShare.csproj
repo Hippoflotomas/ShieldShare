@@ -48,6 +48,11 @@
 		<Reference Include="System.IO.Compression">
 			<Private>false</Private>
 		</Reference>
+		<Reference Include="SoftReferenceableAssets">
+			<!-- ZNetScene implements an interface from here; needed to compile code that uses ZNetScene -->
+			<HintPath>$(VALHEIM_MANAGED)\SoftReferenceableAssets.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
 		<Reference Include="assembly_utils">
 			<HintPath>$(VALHEIM_MANAGED)\assembly_utils.dll</HintPath>
 		</Reference>

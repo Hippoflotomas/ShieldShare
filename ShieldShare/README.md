@@ -4,7 +4,9 @@ Add your own shield designs to Valheim, and share them with friends as a single 
 
 ## Installation
 Install with a mod manager (r2modman / Thunderstore), or copy `ShieldShare.dll` into `BepInEx\plugins\ShieldShare\`.
-Requires BepInEx and Jötunn. Everyone on a server needs the mod and the same shield packs.
+Requires BepInEx and Jötunn. Everyone on a server needs the mod, and should have the same shield packs:
+a shield from a pack you don't have shows as a magenta "missing" shield (in hand, on the ground or in a
+chest) and a message lists the missing shields in chat. Nothing is lost - install the pack and it's back.
 
 ## Adding shields
 Drop shield pack `.zip` files into `Documents\Valheim Custom Shields\` (don't unzip them) and start the game.
@@ -35,5 +37,6 @@ The game writes a full guide, `HOW TO MAKE A SHIELD.txt`, and a face-outline tem
   shield.json required) with clear log messages when a pack is laid out wrong. Author guide and templates
   written to the drop folder. All nine customisable vanilla shields supported (metal shields are painted only
   where the game's own styles paint). Built-in "missing" patterns; removed packs leave stand-ins behind.
-  Plugin GUID is now com.hippotech.shieldshare.
+  Plugin GUID is now com.hippotech.shieldshare. Other players' shields from packs you don't have show as
+  magenta stand-ins with an on-screen notice and chat details (like BannerShare), and are never deleted.
 - 0.0.1 - First test build.
