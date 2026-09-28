@@ -502,7 +502,7 @@ namespace ShieldShare
         private static readonly Dictionary<string, BaseSettings> KnownBases =
             new Dictionary<string, BaseSettings>(StringComparer.OrdinalIgnoreCase)
             {
-                // Check with an asymmetric pattern (the elephant faces left in Pattern2).
+                // Check with an asymmetric pattern (the Hippoflotomas faces left in Pattern2).
                 //                                          face  flipV  flipH  mask
                 { "ShieldWood",            new BaseSettings(-1, false, false, false) }, // verified in game
                 { "ShieldBanded",          new BaseSettings(-1, false, true,  false) }, // flipH from test 5 (was mirrored)
