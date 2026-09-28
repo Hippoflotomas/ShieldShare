@@ -157,7 +157,7 @@ namespace ShieldShare
                 if (projection == null || projection.Front.Count == 0)
                     Jotunn.Logger.LogError($"[ShieldShare] '{pack.Name}': can't work out the front face of '{def.BasePrefab}', so its patterns can't be applied.");
                 else
-                    styleTex = BuildStyles(pack, projection, out icons);
+                    styleTex = BuildStyles(pack, def.BasePrefab, projection, out icons);
             }
 
             if (styleTex == null)
@@ -206,7 +206,7 @@ namespace ShieldShare
         ///     only where the face's UVs point, and leave the rest of the cell transparent - exactly
         ///     how the vanilla style atlas is made.
         /// </summary>
-        private Texture2D BuildStyles(ShieldPack pack, FrontProjection projection, out Sprite[] icons)
+        private Texture2D BuildStyles(ShieldPack pack, string baseName, FrontProjection projection, out Sprite[] icons)
         {
             int count = pack.PatternPaths.Count;
             var iconList = new Sprite[count];
@@ -220,6 +220,8 @@ namespace ShieldShare
             int cellSize = 0;
             Color32[] atlas = null;
             int atlasSize = 0;
+            byte[] paintMask = null;
+            int maskBefore = 0, maskAfter = 0;
 
             for (int i = 0; i < count; i++)
             {
@@ -240,11 +242,18 @@ namespace ShieldShare
                         cellSize = Mathf.Clamp(Mathf.NextPowerOfTwo(Mathf.Max(pattern.width, pattern.height)), MinCellSize, MaxCellSize);
                         atlasSize = cellSize * 4;
                         atlas = new Color32[atlasSize * atlasSize]; // all transparent
+                        paintMask = GetVanillaPaintMask(baseName, atlasSize);
                     }
 
                     int col = i % 4, row = i / 4; // row 0 = bottom, matches the in-game style order
                     StyleBaker.BakeCell(projection, patternPixels, pattern.width, pattern.height,
                         atlas, atlasSize, col * cellSize, row * cellSize, cellSize);
+                    if (paintMask != null)
+                    {
+                        var counts = StyleBaker.ApplyMask(atlas, atlasSize, col * cellSize, row * cellSize, cellSize, paintMask);
+                        maskBefore += counts.Key;
+                        maskAfter += counts.Value;
+                    }
                 }
 
                 iconList[i] = LoadOrNull(pack.IconPaths[i]);
@@ -277,6 +286,9 @@ namespace ShieldShare
             }
             if (atlas == null)
                 return null;
+
+            if (paintMask != null && maskBefore > 0)
+                Jotunn.Logger.LogInfo($"[ShieldShare] '{pack.Name}': masked to the vanilla paint area - {Mathf.RoundToInt(100f * maskAfter / maskBefore)}% of the face is paintable on '{baseName}'.");
 
             var tex = new Texture2D(atlasSize, atlasSize, TextureFormat.RGBA32, true)
             {
@@ -323,19 +335,48 @@ namespace ShieldShare
             return TextureIO.ToSprite(TextureIO.FromPixels(px, IconSize, IconSize, false));
         }
 
-        /// <summary>
-        ///     Which way the OUTSIDE of each tested vanilla shield faces in its own mesh space, confirmed in game.
-        ///     -1 = local -Z, +1 = local +Z. Shields not listed are worked out from the vanilla paint styles
-        ///     (see DetectFaceSign). If a shield's pattern comes out upside down, add it with flipVertical: true.
-        /// </summary>
-        private static readonly Dictionary<string, KeyValuePair<int, bool>> KnownFaces =
-            new Dictionary<string, KeyValuePair<int, bool>>(StringComparer.OrdinalIgnoreCase)
+        /// <summary>Per-base-shield settings established by testing in game.</summary>
+        private sealed class BaseSettings
+        {
+            /// <summary>-1 = the outside faces local -Z, +1 = local +Z.</summary>
+            public int FaceSign;
+            /// <summary>Turn patterns upside down (model built the other way up).</summary>
+            public bool FlipVertical;
+            /// <summary>Only paint where the vanilla styles paint (keeps patterns off metal parts).</summary>
+            public bool MaskToVanillaPaint;
+
+            public BaseSettings(int faceSign, bool flipVertical, bool mask)
             {
-                { "ShieldWood",      new KeyValuePair<int, bool>(-1, false) }, // tested OK
-                { "ShieldBanded",    new KeyValuePair<int, bool>(-1, false) }, // tested OK
-                { "ShieldSilver",    new KeyValuePair<int, bool>(+1, false) }, // pattern was on the inside with -Z
-                { "ShieldWoodTower", new KeyValuePair<int, bool>(+1, false) }, // pattern was on the inside with -Z
+                FaceSign = faceSign;
+                FlipVertical = flipVertical;
+                MaskToVanillaPaint = mask;
+            }
+        }
+
+        /// <summary>
+        ///     What testing showed for each vanilla shield. Shields not listed: the face is worked out from the
+        ///     vanilla paint styles (DetectFaceSign), not flipped, and masked to the vanilla paint area.
+        ///     If a pattern comes out upside down, set FlipVertical; if it covers metal parts, set the mask.
+        /// </summary>
+        private static readonly Dictionary<string, BaseSettings> KnownBases =
+            new Dictionary<string, BaseSettings>(StringComparer.OrdinalIgnoreCase)
+            {
+                //                                          face  flipV  mask
+                { "ShieldWood",            new BaseSettings(-1, false, false) }, // correct (test 2)
+                { "ShieldBanded",          new BaseSettings(-1, false, false) }, // correct (test 2)
+                { "ShieldWoodTower",       new BaseSettings(+1, false, false) }, // correct (test 3)
+                { "ShieldSilver",          new BaseSettings(+1, true,  false) }, // test 3: right side, upside down
+                { "ShieldBlackmetal",      new BaseSettings(+1, false, true)  }, // test 3: was on the inside with -Z
+                { "ShieldBlackmetalTower", new BaseSettings(+1, false, true)  }, // test 3: was on the inside with -Z
+                { "ShieldIronTower",       new BaseSettings(+1, false, true)  }, // test 3: everywhere but the outside with -Z
+                { "ShieldFlametal",        new BaseSettings(+1, false, true)  }, // test 3: both sides + metal with -Z; paint check says +Z
+                { "ShieldFlametalTower",   new BaseSettings(-1, false, true)  }, // test 3: right side, but on metal parts
             };
+
+        /// <summary>Vanilla style atlas of each base, for the paint-area mask.</summary>
+        private readonly Dictionary<string, Texture> vanillaStyleTex = new Dictionary<string, Texture>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, bool> useVanillaMask = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, byte[]> maskCache = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
 
         private FrontProjection GetProjection(string baseName, MeshFilter model)
         {
@@ -367,21 +408,27 @@ namespace ShieldShare
             // Which side is the outside? Use the tested value if we have one; otherwise (and for the log,
             // always) check which side the vanilla paint styles cover.
             string detectNote;
-            int detected = DetectFaceSign(snap, triangles, renderer, out detectNote);
-            KeyValuePair<int, bool> known;
+            Texture vanilla;
+            int detected = DetectFaceSign(snap, triangles, renderer, out detectNote, out vanilla);
+            BaseSettings known;
             int faceSign;
-            bool flipV = false;
-            if (KnownFaces.TryGetValue(baseName, out known))
+            bool flipV = false, mask = true;
+            if (KnownBases.TryGetValue(baseName, out known))
             {
-                faceSign = known.Key;
-                flipV = known.Value;
-                detectNote = $"tested: {(faceSign < 0 ? "-Z" : "+Z")}; paint check: {detectNote}";
+                faceSign = known.FaceSign;
+                flipV = known.FlipVertical;
+                mask = known.MaskToVanillaPaint;
+                detectNote = $"tested: {(faceSign < 0 ? "-Z" : "+Z")}{(flipV ? ", flipped" : "")}; paint check: {detectNote}";
             }
             else
             {
                 faceSign = detected != 0 ? detected : -1;
                 detectNote = detected != 0 ? $"paint check: {detectNote}" : $"paint check inconclusive ({detectNote}), assuming -Z";
             }
+            vanillaStyleTex[baseName] = vanilla;
+            useVanillaMask[baseName] = mask && vanilla != null;
+            if (mask && vanilla != null)
+                detectNote += "; masked to vanilla paint area";
 
             projection = FrontProjection.Build(snap.Vertices, snap.Normals, snap.Uvs, triangles, faceSign, flipV);
             projections[baseName] = projection;
@@ -400,10 +447,10 @@ namespace ShieldShare
         ///     Returns -1 or +1 for the side (local Z) whose triangles the vanilla style atlas paints most,
         ///     or 0 if that can't be told (no vanilla styles, or both sides equal).
         /// </summary>
-        private static int DetectFaceSign(MeshSnapshot snap, int[] triangles, MeshRenderer renderer, out string note)
+        private static int DetectFaceSign(MeshSnapshot snap, int[] triangles, MeshRenderer renderer, out string note, out Texture vanilla)
         {
             const int size = 256;
-            Texture vanilla = null;
+            vanilla = null;
             if (renderer != null)
                 foreach (var mat in renderer.sharedMaterials)
                     if (mat != null && mat.HasProperty("_StyleTex") && mat.GetTexture("_StyleTex") != null)
@@ -432,12 +479,47 @@ namespace ShieldShare
             float neg = FrontProjection.PaintedFraction(snap.Vertices, snap.Normals, snap.Uvs, triangles, -1, atlas, size);
             float pos = FrontProjection.PaintedFraction(snap.Vertices, snap.Normals, snap.Uvs, triangles, +1, atlas, size);
             note = $"-Z {Pct(neg)} painted, +Z {Pct(pos)} painted";
-            if (Mathf.Abs(neg - pos) < 0.1f)
+            // Metal shields only have a small paintable panel, so the numbers can be small (6% vs 0%).
+            // In testing the larger side was the outside on every shield; require a clear ratio, not a big gap.
+            float hi = Mathf.Max(neg, pos), lo = Mathf.Max(Mathf.Min(neg, pos), 0f);
+            if (hi < 0.02f || hi < lo * 1.5f)
                 return 0;
             return neg > pos ? -1 : 1;
         }
 
         private static string Pct(float f) => f < 0 ? "n/a" : Mathf.RoundToInt(f * 100f) + "%";
+
+        /// <summary>The vanilla paintable area of a base at one atlas size, or null if that base isn't masked.</summary>
+        private byte[] GetVanillaPaintMask(string baseName, int atlasSize)
+        {
+            bool use;
+            Texture vanilla;
+            if (!useVanillaMask.TryGetValue(baseName, out use) || !use || !vanillaStyleTex.TryGetValue(baseName, out vanilla) || vanilla == null)
+                return null;
+
+            string key = baseName + "@" + atlasSize;
+            byte[] mask;
+            if (maskCache.TryGetValue(key, out mask))
+                return mask;
+
+            try
+            {
+                mask = StyleBaker.PaintableMask(ReadTexturePixels(vanilla, atlasSize), atlasSize);
+                int painted = mask.Count(a => a > StyleBaker.MaskLow);
+                if (painted == 0)
+                {
+                    Jotunn.Logger.LogWarning($"[ShieldShare] Base '{baseName}': the vanilla styles paint nothing, so no paint-area mask is used.");
+                    mask = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Jotunn.Logger.LogWarning($"[ShieldShare] Base '{baseName}': could not read the vanilla styles for the paint-area mask: {ex.Message}");
+                mask = null;
+            }
+            maskCache[key] = mask;
+            return mask;
+        }
 
         /// <summary>Copies any texture (even a compressed, non-readable one) into a readable pixel array via the GPU.</summary>
         private static Color32[] ReadTexturePixels(Texture source, int size)

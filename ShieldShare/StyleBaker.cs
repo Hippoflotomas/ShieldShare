@@ -296,6 +296,60 @@ namespace ShieldShare
             }
         }
 
+        /// <summary>
+        ///     The vanilla "paintable area": for each pixel of one atlas cell, the highest alpha found at that
+        ///     position in any of the 16 cells of the vanilla style atlas. The game's own styles only paint the
+        ///     parts of the shield meant to be painted (wood panels), never the metal, so this is a stencil.
+        /// </summary>
+        public static byte[] PaintableMask(Color32[] vanillaAtlas, int atlasSize)
+        {
+            int cell = atlasSize / 4;
+            var mask = new byte[cell * cell];
+            for (int i = 0; i < 16; i++)
+            {
+                int ox = (i % 4) * cell, oy = (i / 4) * cell;
+                for (int y = 0; y < cell; y++)
+                {
+                    int row = (oy + y) * atlasSize + ox;
+                    for (int x = 0; x < cell; x++)
+                    {
+                        byte a = vanillaAtlas[row + x].a;
+                        if (a > mask[y * cell + x])
+                            mask[y * cell + x] = a;
+                    }
+                }
+            }
+            return mask;
+        }
+
+        public const byte MaskLow = 16, MaskHigh = 96;
+
+        /// <summary>
+        ///     Fades out everything the vanilla styles never paint, with a soft edge that follows the vanilla
+        ///     paint boundary. Returns (pixels painted before, pixels still painted after).
+        /// </summary>
+        public static KeyValuePair<int, int> ApplyMask(Color32[] atlas, int atlasWidth, int cellX, int cellY, int cellSize, byte[] mask)
+        {
+            int before = 0, after = 0;
+            for (int y = 0; y < cellSize; y++)
+            {
+                for (int x = 0; x < cellSize; x++)
+                {
+                    int i = (cellY + y) * atlasWidth + cellX + x;
+                    var c = atlas[i];
+                    if (c.a == 0)
+                        continue;
+                    before++;
+                    float f = Mathf.Clamp01((mask[y * cellSize + x] - MaskLow) / (float)(MaskHigh - MaskLow));
+                    c.a = (byte)Mathf.RoundToInt(c.a * f);
+                    atlas[i] = c;
+                    if (c.a > 0)
+                        after++;
+                }
+            }
+            return new KeyValuePair<int, int>(before, after);
+        }
+
         private static float Cross(Vector2 a, Vector2 b) => a.x * b.y - a.y * b.x;
 
         private static byte Lerp2(byte c00, byte c10, byte c01, byte c11, float tx, float ty)

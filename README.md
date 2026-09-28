@@ -24,11 +24,19 @@ the author's flat image through a straight-on (planar) projection of the face. T
 transparent, so everything but the face shows the plain base texture - the same way the vanilla atlas is made.
 
 "Front" is decided per triangle: the average vertex normal must point along the face direction (> 0.5).
-Models differ in which way their outside faces: wood and banded face local -Z, silver and wood tower face +Z
-(the `KnownFaces` table in `ShieldShare.cs`, all confirmed in game). For shields not in the table, the side
-is worked out by checking which side's UVs land on painted pixels in the vanilla style atlas - the vanilla
-artists only painted the outside. The log line `Base '...': face = ...` shows the result and the check's numbers.
-For +Z faces the pattern's U axis is mirrored so artwork isn't back to front.
+Models differ in which way their outside faces and which way up they are. The `KnownBases` table in
+`ShieldShare.cs` records what in-game testing established for each vanilla shield (face -Z/+Z, flip vertical,
+mask). For shields not in the table, the face is worked out by checking which side's UVs land on painted pixels
+in the vanilla style atlas - the vanilla artists only painted the outside. For +Z faces the pattern's U axis is
+mirrored so artwork isn't back to front.
+
+### Paint-area mask
+Metal shields share one texture between the paintable panel and the metal frame, so a face-shaped bake also
+lands on metal. For those bases the baked pattern is multiplied by the vanilla "paintable area": the highest
+alpha at each position across all 16 cells of the vanilla style atlas (read back through the GPU), with a soft
+edge. Patterns then appear exactly where the game's own styles do.
+The log line `Base '...': face = ...` shows the face, the paint-check numbers and whether the mask is used;
+`'<pack>': masked to the vanilla paint area - N% of the face is paintable` shows how much of the face survived.
 
 ## Building
 Standard Jötunn mod stub: build in Visual Studio / `dotnet build`. The Debug post-build step (`scripts/publish.ps1`)
