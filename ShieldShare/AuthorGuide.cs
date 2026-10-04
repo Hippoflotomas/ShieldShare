@@ -125,7 +125,7 @@ those shields look normal again. Everyone should use the same packs.
 WHERE THINGS GO
 ---------------
 - Players and authors use:  Documents\Valheim Custom Shields\   (.zip files only)
-- The mod keeps a working copy in BepInEx\config\ShieldShare\Shields\ - don't edit there;
+- The mod keeps a working copy in BepInEx\cache\ShieldShare\Shields\ - don't edit there;
   it's refreshed from the zips every launch.
 - Folders starting with _ (like _Templates) are the mod's own helpers.
 ";

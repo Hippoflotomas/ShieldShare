@@ -44,7 +44,7 @@ namespace ShieldShare
                     if (count == 0)
                         Jotunn.Logger.LogWarning($"[ShieldShare] '{zipName}' contains no shields. Each shield must be a folder inside the zip, with {ShieldPack.JsonFileName} and its images in that folder.");
                     else
-                        Jotunn.Logger.LogInfo($"[ShieldShare] Synced {count} shield(s) from '{zipName}'.");
+                        Jotunn.Logger.LogDebug($"[ShieldShare] Synced {count} shield(s) from '{zipName}'.");
                 }
                 catch (Exception ex)
                 {
@@ -141,7 +141,7 @@ namespace ShieldShare
 
                     string name = SafeFolderName(folderName);
                     if (name != folderName)
-                        Jotunn.Logger.LogInfo($"[ShieldShare] '{zipName}': '{folderName}' is used as '{name}' (only letters, digits, '-' and '_' are kept).");
+                        Jotunn.Logger.LogDebug($"[ShieldShare] '{zipName}': '{folderName}' is used as '{name}' (only letters, digits, '-' and '_' are kept).");
                     if (!produced.Add(name))
                     {
                         Jotunn.Logger.LogWarning($"[ShieldShare] Two shields are called '{name}' - skipping the one in '{zipName}'. Shield folder names must be unique.");

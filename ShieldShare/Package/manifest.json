@@ -1,7 +1,7 @@
 {
   "name": "ShieldShare",
   "description": "Add your own shield designs to Valheim and share them as a zip. Works on all nine customisable shields; missing packs show a placeholder instead of losing shields.",
-  "version_number": "1.0.1",
+  "version_number": "1.1.0",
   "website_url": "",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2333",

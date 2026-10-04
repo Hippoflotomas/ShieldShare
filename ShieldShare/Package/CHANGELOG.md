@@ -1,3 +1,7 @@
+## Version 1.1.0
+- Shield pack textures now live in BepInEx\cache\ShieldShare instead of BepInEx\config\ShieldShare - config is for your own settings, cache is rebuilt from your zips in Documents automatically and can be safely deleted.
+- Quieter startup log: one summary line per launch ("Loaded N shieldpack(s) from ...") instead of one line per shield; the old per-shield detail is still there at Debug level for troubleshooting.
+
 ## Version 1.0.1
 - The package site's compatibility check flagged 1.0.0 as broken on the Valheim dedicated server. The server's game code turned out to be the same, but the inventory patch now finds its method when the game starts instead of relying on an exact signature.
 - Each patch now loads on its own, so a future game update can only switch off the one feature it breaks, with a warning in the log.

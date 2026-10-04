@@ -20,7 +20,7 @@ namespace ShieldShare
     {
         public const string PluginGUID = "com.hippotech.shieldshare";
         public const string PluginName = "ShieldShare";
-        public const string PluginVersion = "1.0.1";
+        public const string PluginVersion = "1.1.0";
         internal const string ItemPrefabPrefix = "ShieldShare_";
         private const string DropFolderName = "Valheim Custom Shields";
         internal const string BuiltInPrefix = "Missing_";            // ShieldShare_Missing_ShieldWood, ...
@@ -96,7 +96,7 @@ namespace ShieldShare
 
         private static string GetShieldFolderPath()
         {
-            string path = Path.Combine(BepInEx.Paths.ConfigPath, PluginName, "Shields");
+            string path = Path.Combine(BepInEx.Paths.CachePath, PluginName, "Shields");
             Directory.CreateDirectory(path);
             return path;
         }
@@ -133,19 +133,19 @@ namespace ShieldShare
             RegisterBuiltInShields();
 
             // 2. Shield packs.
-            var known = new KnownShields(Path.Combine(Path.GetDirectoryName(shieldsFolder), "known-shields.json"));
+            var known = new KnownShields(Path.Combine(BepInEx.Paths.ConfigPath, PluginName, "known-shields.json"));
             known.Load();
             var registered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             var shieldFolders = Directory.GetDirectories(shieldsFolder).OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToArray();
-            Jotunn.Logger.LogInfo($"[ShieldShare] Found {shieldFolders.Length} shield folder(s) in {shieldsFolder}");
+            Jotunn.Logger.LogDebug($"[ShieldShare] Found {shieldFolders.Length} shield folder(s) in {shieldsFolder}");
 
             foreach (var folder in shieldFolders)
             {
                 string name = Path.GetFileName(folder);
                 if (string.Equals(name, ReservedFolderName, StringComparison.OrdinalIgnoreCase))
                 {
-                    Jotunn.Logger.LogInfo($"[ShieldShare] The '{name}' folder in {shieldsFolder} is no longer used - the 'missing' shields are built in now. You can delete it.");
+                    Jotunn.Logger.LogDebug($"[ShieldShare] The '{name}' folder in {shieldsFolder} is no longer used - the 'missing' shields are built in now. You can delete it.");
                     continue;
                 }
                 try
@@ -165,6 +165,7 @@ namespace ShieldShare
                     Jotunn.Logger.LogError($"[ShieldShare] Shield '{name}' failed to load: {ex}");
                 }
             }
+            Jotunn.Logger.LogInfo($"[ShieldShare] Loaded {registered.Count} shieldpack(s) from '{dropFolder}'.");
 
             // 3. Stand-ins for shields whose pack has been removed, so players don't lose them.
             RegisterStandIns(known, registered);
@@ -319,7 +320,7 @@ namespace ShieldShare
                 shared.m_variants = icons.Length; // Jötunn's FixVariants sets this too, later; set it now for consistency
 
             int styleCount = styleTex != null ? icons.Length : 0;
-            Jotunn.Logger.LogInfo($"[ShieldShare] Registered '{def.DisplayName}' from '{pack.Name}' " +
+            Jotunn.Logger.LogDebug($"[ShieldShare] Registered '{def.DisplayName}' from '{pack.Name}' " +
                                   $"(base {def.BasePrefab}, {styleCount} style(s){(def.Hidden ? ", not craftable" : "")}).");
             return styleCount;
         }
@@ -344,7 +345,7 @@ namespace ShieldShare
             string overridePath = pack.FindImage("StyleTex");
             Texture2D handBuilt = overridePath != null ? TextureIO.Load(overridePath) : null;
             if (handBuilt != null)
-                Jotunn.Logger.LogInfo($"[ShieldShare] '{pack.Name}': using hand-made StyleTex image instead of baking the patterns.");
+                Jotunn.Logger.LogDebug($"[ShieldShare] '{pack.Name}': using hand-made StyleTex image instead of baking the patterns.");
 
             int cellSize = 0;
             Color32[] atlas = null;
@@ -436,7 +437,7 @@ namespace ShieldShare
                 return null;
 
             if (paintMask != null && maskBefore > 0)
-                Jotunn.Logger.LogInfo($"[ShieldShare] '{pack.Name}': masked to the vanilla paint area - {Mathf.RoundToInt(100f * maskAfter / maskBefore)}% of the face is paintable on '{baseName}'.");
+                Jotunn.Logger.LogDebug($"[ShieldShare] '{pack.Name}': masked to the vanilla paint area - {Mathf.RoundToInt(100f * maskAfter / maskBefore)}% of the face is paintable on '{baseName}'.");
 
             var tex = new Texture2D(atlasSize, atlasSize, TextureFormat.RGBA32, true)
             {
@@ -594,7 +595,7 @@ namespace ShieldShare
             projection = FrontProjection.Build(snap.Vertices, snap.Normals, snap.Uvs, triangles, faceSign, flipV, flipH);
             projections[baseName] = projection;
 
-            Jotunn.Logger.LogInfo($"[ShieldShare] Base '{baseName}': face = {(faceSign < 0 ? "-Z" : "+Z")} ({detectNote}); " +
+            Jotunn.Logger.LogDebug($"[ShieldShare] Base '{baseName}': face = {(faceSign < 0 ? "-Z" : "+Z")} ({detectNote}); " +
                                   $"{projection.Front.Count} of {projection.TotalTriangles} triangles form the face " +
                                   $"(aspect {projection.AspectRatio:F2}, bounds X[{projection.MinX:F3},{projection.MaxX:F3}] " +
                                   $"Y[{projection.MinY:F3},{projection.MaxY:F3}]){partsNote}{(snap.FromGpu ? ", mesh read from GPU" : "")}.");
@@ -818,7 +819,7 @@ namespace ShieldShare
                 }
 
                 if (applied > 0)
-                    Jotunn.Logger.LogInfo($"[ShieldShare] '{pack.Name}': applied {Path.GetFileName(path)} to {layer.Value}.");
+                    Jotunn.Logger.LogDebug($"[ShieldShare] '{pack.Name}': applied {Path.GetFileName(path)} to {layer.Value}.");
                 else
                     Jotunn.Logger.LogWarning($"[ShieldShare] '{pack.Name}': {Path.GetFileName(path)} was ignored - the base shield's material has no {layer.Value}.");
             }
